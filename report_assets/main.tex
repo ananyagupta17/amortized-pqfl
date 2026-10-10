@@ -1,0 +1,144 @@
+% IEEEtran skeleton: section headings only, with figures and tables placed.
+% Compile: tectonic main.tex   (or pdflatex/bibtex from report_assets/)
+\documentclass[conference]{IEEEtran}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{amsmath,amssymb}
+\usepackage{newtxtext,newtxmath}
+\usepackage[hidelinks]{hyperref}
+\graphicspath{{figures/}{diagrams/}}
+
+\begin{document}
+
+\title{Amortized Post-Quantum Secure Aggregation for Federated Learning}
+\author{\IEEEauthorblockN{Author Name}
+\IEEEauthorblockA{Affiliation\\ email}}
+\maketitle
+
+\begin{abstract}
+\end{abstract}
+
+\begin{IEEEkeywords}
+post-quantum cryptography, federated learning, ML-KEM, ML-DSA, secure aggregation
+\end{IEEEkeywords}
+
+\section{Introduction}
+
+\section{Background}
+\subsection{Post-Quantum KEMs and Signatures}
+\subsection{Federated Learning and Update Confidentiality}
+
+\section{Threat Model}
+
+\section{Protocol Design}
+\label{sec:design}
+
+\begin{figure*}[t]
+  \centering
+  \includegraphics[width=\textwidth]{architecture.pdf}
+  \caption{System architecture.}
+  \label{fig:architecture}
+\end{figure*}
+
+\subsection{Session Setup}
+\subsection{Per-Round Update Encryption}
+\subsection{Re-Keying Schedule}
+
+\begin{figure*}[t]
+  \centering
+  \includegraphics[width=0.92\textwidth]{sequence.pdf}
+  \caption{Message sequence for a re-key round followed by a symmetric-only round.}
+  \label{fig:sequence}
+\end{figure*}
+
+\subsection{Operating Modes}
+
+\section{Implementation}
+
+\section{Experimental Setup}
+
+\section{Results}
+\label{sec:results}
+
+\input{tables/main_comparison}
+
+\subsection{Per-Round and Cumulative Crypto Overhead}
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\columnwidth]{crypto_per_round.pdf}
+  \caption{Crypto time per round by mode (mean $\pm$ std over seeds).}
+  \label{fig:per_round}
+\end{figure}
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\columnwidth]{crypto_cumulative.pdf}
+  \caption{Cumulative crypto time over rounds by mode.}
+  \label{fig:cumulative}
+\end{figure}
+
+\input{tables/primitives}
+
+\subsection{Communication Overhead}
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\columnwidth]{bytes_components.pdf}
+  \caption{Protocol bytes on the wire per client, by component.}
+  \label{fig:bytes}
+\end{figure}
+
+\subsection{Effect of Re-Key Interval}
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\columnwidth]{rekey_sweep.pdf}
+  \caption{Overhead versus re-key interval $N$ (amortized PQC). $N^*$: smallest $N$ whose
+  handshake overhead per round is within 10\% of the symmetric-only floor (shaded band).}
+  \label{fig:rekey}
+\end{figure}
+
+\input{tables/rekey_sweep}
+
+\subsection{Scaling with the Number of Clients}
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\columnwidth]{client_scaling.pdf}
+  \caption{Crypto overhead versus number of clients $K$.}
+  \label{fig:scaling}
+\end{figure}
+
+\input{tables/client_scaling}
+
+\subsection{Model Quality}
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\columnwidth]{accuracy.pdf}
+  \caption{Final test accuracy per mode (mean $\pm$ std over seeds).}
+  \label{fig:accuracy}
+\end{figure}
+
+\input{tables/accuracy}
+
+\section{Security Evaluation}
+
+\input{tables/tests}
+
+\section{Discussion and Limitations}
+
+\section{Related Work}
+
+\section{Conclusion}
+
+% \bibliographystyle{IEEEtran}
+% \bibliography{refs}
+
+\appendices
+\section{Implementation Notes}
+\input{build_issues}
+
+\end{document}

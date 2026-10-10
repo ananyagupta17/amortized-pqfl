@@ -1,0 +1,16 @@
+% Issues hit during the build and their fixes (bullet list; mirrors build_issues.md).
+\begin{itemize}
+  \item \textbf{KEM input lengths unchecked by liboqs-python.} \texttt{encap\_secret()} accepted a 1,183-byte ML-KEM-768 public key (expected 1,184) without error. \emph{Fix:} wrapper validates public-key and ciphertext lengths; malformed keys are rejected as authentication failures.
+  \item \textbf{MITM on the client-only-signed handshake.} An unauthenticated KEM ciphertext let an attacker re-encapsulate and learn the client's session key. \emph{Fix:} server signs its response, bound to $H(\mathit{init})$, in every mode.
+  \item \textbf{Header epoch not covered by the AEAD.} With server-side AAD, a changed header epoch still authenticates; mutation M5 showed the explicit header check is the only defense. \emph{Fix:} check retained and tested.
+  \item \textbf{Cold-start timing bias.} First X25519 keygen $\approx$3.8\,ms vs.\ $\approx$31\,\textmu s warm (lazy OpenSSL init) inflated classical round~0 (8.8 vs.\ 4.0\,ms). \emph{Fix:} untimed warm-up of all primitives before round~0.
+  \item \textbf{Participation-dependent epochs.} Counting handshakes would desynchronize clients that skip rounds. \emph{Fix:} scheduled epoch $e=\lfloor r/N \rfloor$; stale or non-increasing handshake epochs rejected.
+  \item \textbf{Cadence-confounded baseline.} Classical originally keyed once. \emph{Fix:} classical supports the same $N$, isolating the primitives.
+  \item \textbf{Training cost.} A full MNIST pass took $\approx$13\,s per round (about 9\,h for the grid). \emph{Fix:} per-client sample cap (2,000) and a run cache shared across experiments (80 distinct runs instead of 105).
+  \item \textbf{Library/binding version coupling.} liboqs and liboqs-python must share major.minor; a missing library triggers a source build. \emph{Fix:} liboqs 0.16.0 (Homebrew) with liboqs-python 0.16.0.1 pinned.
+  \item \textbf{Interpreter choice.} System default Python 3.14. \emph{Fix:} virtualenv on Python 3.11 for torch/torchvision wheel availability.
+  \item \textbf{Manifest recorded CLI flags, not effective settings.} \emph{Fix:} effective seeds, rounds, $K$, $N$, sweeps and sample cap stored and consumed by the asset builder.
+  \item \textbf{Output naming.} Naive PQC CSVs were labelled $N{=}$none. \emph{Fix:} names use the effective interval.
+  \item \textbf{Benchmark conditions.} Laptop on battery at run time. \emph{Fix:} full run deferred to AC power; runs executed sequentially.
+  \item \textbf{No TeX toolchain.} \emph{Fix:} \texttt{tectonic} installed for diagrams and the skeleton.
+\end{itemize}

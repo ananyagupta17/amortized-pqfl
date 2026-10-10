@@ -1,0 +1,46 @@
+{
+  "criterion": "handshake overhead per round <= 10% of symmetric-only floor",
+  "K": 5,
+  "rounds": 4,
+  "floor_per_round_ms": 1.6189873664794083,
+  "threshold_ms": 0.16189873664794086,
+  "N_star": null,
+  "N_swept": [
+    1,
+    2,
+    4
+  ],
+  "rows": [
+    {
+      "N": 1,
+      "handshakes": 20,
+      "crypto_per_round_ms": 4.492244246648576,
+      "crypto_per_round_sd": 0.0801470068911328,
+      "hs_overhead_per_round_ms": 2.866953014745413,
+      "hs_overhead_per_round_sd": 0.03455343932303722,
+      "hs_overhead_pct_of_floor": 177.0830998502345,
+      "within_tol": false
+    },
+    {
+      "N": 2,
+      "handshakes": 10,
+      "crypto_per_round_ms": 2.9670357762369752,
+      "crypto_per_round_sd": 0.045055228012330875,
+      "hs_overhead_per_round_ms": 1.3444113428705249,
+      "hs_overhead_per_round_sd": 0.09241754323129589,
+      "hs_overhead_pct_of_floor": 83.04026150580985,
+      "within_tol": false
+    },
+    {
+      "N": 4,
+      "handshakes": 5,
+      "crypto_per_round_ms": 2.3015520564512624,
+      "crypto_per_round_sd": 0.011328138569709186,
+      "hs_overhead_per_round_ms": 0.69250562228265,
+      "hs_overhead_per_round_sd": 0.011527080749632499,
+      "hs_overhead_pct_of_floor": 42.77399790886248,
+      "within_tol": false
+    }
+  ],
+  "placeholder": true
+}

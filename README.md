@@ -181,3 +181,13 @@ How the runner works:
 - **Outputs.** Summary tables (`mean ± std` over seeds, in `.md` and `.csv`), the per-run
   `all_runs.csv`, and a `manifest.json` with library versions and machine details go to
   `results/tables/`.
+
+## Report assets
+
+Figures, LaTeX tables, TikZ diagrams and an IEEEtran skeleton are built into `report_assets/`
+(see [report_assets/README.md](report_assets/README.md)):
+
+```bash
+brew install tectonic                      # TeX engine for the diagrams and main.pdf
+python scripts/make_report_assets.py       # after scripts/run_experiments.py
+```

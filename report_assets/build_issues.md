@@ -1,0 +1,41 @@
+# Issues hit during the build, and fixes
+
+- **liboqs-python does not length-check KEM inputs.**
+  - *Issue:* `KeyEncapsulation.encap_secret()` (liboqs-python 0.16.0.1) accepted an ML-KEM-768 public key one byte short (1,183 of 1,184 bytes) without raising an error. The buffer goes to the C library, which reads a fixed 1,184 bytes.
+  - *Fix:* the `MLKEM` wrapper checks public-key and ciphertext lengths against `details["length_*"]`. The server turns a malformed key into an `AuthenticationError`.
+- **The specified handshake was open to a MITM.**
+  - *Issue:* only the client signed. An active attacker could replace the server's KEM ciphertext with its own encapsulation to the client's public key. The client would then encrypt its updates under a key the attacker knows.
+  - *Fix:* the server signs its response, bound to `H(init)`, in every mode (Ed25519 or ML-DSA-65). The client verifies it before decapsulating.
+- **The AEAD does not cover the header epoch.**
+  - *Issue:* the server builds the AAD from its own state, so changing only the header's epoch field does not break the AEAD. Mutation M5 showed that the explicit header-epoch check is the only thing rejecting such updates.
+  - *Fix:* the check stays in, and `test_update_with_wrong_epoch_header_rejected` covers it.
+- **Cold-start bias in timings.**
+  - *Issue:* the first X25519 keygen in a process took about 3.8 ms, versus about 31 µs warm, because OpenSSL initializes lazily. This inflated classical round 0 (8.8 ms vs 4.0 ms).
+  - *Fix:* every primitive and the AEAD/HKDF path run once, untimed, before round 0.
+- **The epoch must not depend on participation.**
+  - *Issue:* counting handshakes per client would desynchronize clients that skip rounds.
+  - *Fix:* the schedule fixes the epoch as `e = floor(r / N)`. The server rejects handshakes for any other epoch and for any epoch not newer than the current session.
+- **Classical vs amortized was confounded by re-key cadence.**
+  - *Issue:* classical was originally keyed once.
+  - *Fix:* classical supports the same `N` schedule, so the two modes differ only in their primitives.
+- **Full-MNIST training made experiments infeasible.**
+  - *Issue:* one local pass over MNIST took about 13 s per round on a laptop CPU, about 9 h for the full experiment grid.
+  - *Fix:* a `samples_per_client` cap (default 2,000), plus a run cache shared by all experiments: 80 distinct runs instead of 105. Full data is still available with `--samples-per-client 0`.
+- **liboqs C library and binding versions must match.**
+  - *Issue:* if their major.minor versions differ, liboqs-python warns; if no library is found, it tries to download and build liboqs from source.
+  - *Fix:* Homebrew liboqs 0.16.0 with liboqs-python pinned to 0.16.0.1.
+- **Interpreter choice.**
+  - *Issue:* the system default Python is 3.14.
+  - *Fix:* the virtualenv uses Homebrew Python 3.11, a conservative choice for torch and torchvision wheel availability.
+- **Experiment manifest recorded CLI flags, not effective settings.**
+  - *Issue:* under `--quick`, the recorded values differed from the ones actually used.
+  - *Fix:* `manifest.json` stores the effective seeds, rounds, `K`, `N`, sweeps and sample cap. The asset builder reads those.
+- **Output naming.**
+  - *Issue:* the naive PQC CSV was labelled `N=none`, although its interval is 1.
+  - *Fix:* file names use the effective interval.
+- **Benchmark conditions.**
+  - *Issue:* the laptop was on battery when the full run was due. CPU throttling would skew crypto timings.
+  - *Fix:* the full run was deferred until the laptop was on AC power. Runs execute one at a time so they don't compete for the CPU.
+- **No TeX toolchain.**
+  - *Issue:* LaTeX was not installed, so the diagrams and skeleton couldn't be compiled.
+  - *Fix:* installed `tectonic` (Homebrew), a self-contained engine that fetches packages on demand.

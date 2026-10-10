@@ -5,3 +5,5 @@ __pycache__/
 data/
 results/*
 !results/.gitkeep
+report_assets/build/
+report_assets/**/*.log
