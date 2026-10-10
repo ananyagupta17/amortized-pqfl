@@ -10,10 +10,10 @@
 \toprule
 $K$ & \multicolumn{2}{c}{Classical} & \multicolumn{2}{c}{Naive PQC} & \multicolumn{2}{c}{Amortized PQC} \\
 \cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(lr){6-7}
- & Crypto (ms) & \% wall & Crypto (ms) & \% wall & Crypto (ms) & \% wall \\
+ & Crypto (ms) & \% round & Crypto (ms) & \% round & Crypto (ms) & \% round \\
 \midrule
-3 & 6.96 $\pm$ 0.07 & 0.180 $\pm$ 0.002 & 10.88 $\pm$ 0.27 & 0.280 $\pm$ 0.015 & 7.42 $\pm$ 0.08 & 0.190 $\pm$ 0.002 \\
-5 & 10.72 $\pm$ 0.45 & 0.251 $\pm$ 0.015 & 17.40 $\pm$ 0.08 & 0.408 $\pm$ 0.000 & 11.87 $\pm$ 0.18 & 0.276 $\pm$ 0.007 \\
+3 & 6.96 $\pm$ 0.07 & 0.818 $\pm$ 0.018 & 10.88 $\pm$ 0.27 & 1.261 $\pm$ 0.078 & 7.42 $\pm$ 0.08 & 0.883 $\pm$ 0.003 \\
+5 & 10.72 $\pm$ 0.45 & 0.784 $\pm$ 0.049 & 17.40 $\pm$ 0.08 & 1.264 $\pm$ 0.015 & 11.87 $\pm$ 0.18 & 0.859 $\pm$ 0.020 \\
 \bottomrule
 \end{tabular}
 \\[2pt]\parbox{\linewidth}{\scriptsize $N=2$ (Naive PQC: $N=1$), 4 rounds, 2 seeds; times summed over all clients and the server.}

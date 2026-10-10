@@ -83,6 +83,8 @@ post-quantum cryptography, federated learning, ML-KEM, ML-DSA, secure aggregatio
 
 \subsection{Communication Overhead}
 
+\input{tables/overhead}
+
 \begin{figure}[t]
   \centering
   \includegraphics[width=\columnwidth]{bytes_components.pdf}
@@ -95,8 +97,9 @@ post-quantum cryptography, federated learning, ML-KEM, ML-DSA, secure aggregatio
 \begin{figure}[t]
   \centering
   \includegraphics[width=\columnwidth]{rekey_sweep.pdf}
-  \caption{Overhead versus re-key interval $N$ (amortized PQC). $N^*$: smallest $N$ whose
-  handshake overhead per round is within 10\% of the symmetric-only floor (shaded band).}
+  \caption{Overhead versus re-key interval $N$ (amortized PQC) with the cost model $f + h/N$.
+  $N^*(\varepsilon)$: smallest $N$ whose handshake overhead per round is at most $\varepsilon f$,
+  predicted as $\lceil h/(\varepsilon f)\rceil$ and measured, for $\varepsilon \in \{5, 10, 25\}\%$.}
   \label{fig:rekey}
 \end{figure}
 

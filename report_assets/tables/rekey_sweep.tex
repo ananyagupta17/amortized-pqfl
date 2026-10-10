@@ -3,19 +3,30 @@
 \begin{table}[t]
 \centering
 \footnotesize
-\caption{[PLACEHOLDER: quick-profile data] Amortized PQC versus re-key interval $N$}
+\caption{[PLACEHOLDER: quick-profile data] Amortized PQC versus re-key interval $N$ (times in ms)}
 \label{tab:rekey}
-\setlength{\tabcolsep}{4pt}
+\setlength{\tabcolsep}{3.5pt}
 \begin{tabular}{lrrrrr}
 \toprule
-$N$ & HS & Crypto (ms) & HS overhead/round (ms) & \% of floor & HS KB/client \\
+$N$ & HS rounds & Crypto/round & HS overhead/round & Model $h/N$ & \% of $f$ \\
 \midrule
-1 & 20 & 17.97 $\pm$ 0.32 & 2.867 $\pm$ 0.035 & 177.1  & 34.7 \\
-2 & 10 & 11.87 $\pm$ 0.18 & 1.344 $\pm$ 0.092 & 83.0  & 17.4 \\
-4 & 5 & 9.21 $\pm$ 0.05 & 0.693 $\pm$ 0.012 & 42.8  & 8.7 \\
+1 & 8 & 4.257 $\pm$ 0.030 & 2.640 $\pm$ 0.005 & 2.803 & 163.4 \\
+2 & 4 & 3.117 $\pm$ 0.088 & 1.491 $\pm$ 0.072 & 1.401 & 92.3 \\
+4 & 2 & 2.349 $\pm$ 0.062 & 0.722 $\pm$ 0.041 & 0.701 & 44.7 \\
+8 & 1 & 1.996 $\pm$ 0.011 & 0.403 $\pm$ 0.036 & 0.350 & 25.0 \\
 \midrule
-Naive PQC & 20 & 17.40 $\pm$ 0.08 & 2.769 & 171.0 & 34.7 \\
+Naive PQC & 8 & 4.386 & 2.794 & -- & 173.0 \\
 \bottomrule
 \end{tabular}
-\\[2pt]\parbox{\linewidth}{\scriptsize $K=5$, 4 rounds, 2 seeds. Symmetric-only floor 1.619\,ms/round; $N^*$ = smallest $N$ with handshake overhead per round $\leq$10\% of the floor: not reached in the sweep.}
+\\[6pt]
+\begin{tabular}{lrrr}
+\toprule
+$\varepsilon$ & $N^*$ predicted $\lceil h/(\varepsilon f)\rceil$ & next swept $N$ & $N^*$ measured \\
+\midrule
+5\% & 35 & -- & -- \\
+10\% & 18 & -- & -- \\
+25\% & 7 & 8 & 8 \\
+\bottomrule
+\end{tabular}
+\\[2pt]\parbox{\linewidth}{\scriptsize $K=5$, $R=8$, 2 seeds. $f=1.616$\,ms/round (symmetric-only floor), $h=2.803\pm0.281$\,ms (extra cost of one handshake round, 30 rounds pooled). Measured $N^*$: smallest swept $N$ with handshake overhead per round $\leq\varepsilon f$; -- = not reached.}
 \end{table}

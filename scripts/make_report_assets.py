@@ -74,19 +74,20 @@ class Data:
         rows = []
         for p in sorted(raw_dir.glob("*.csv")):
             m = RAW_RE.match(p.name)
-            if not m or int(m["R"]) != self.eff["rounds"] or m["S"] != s:
+            Rs = {self.eff["rounds"], self.eff.get("sweep_rounds", self.eff["rounds"])}
+            if not m or int(m["R"]) not in Rs or m["S"] != s:
                 continue
             df = pd.read_csv(p)
-            if len(df) != self.eff["rounds"] or int(m["seed"]) not in self.eff["seeds"]:
+            if len(df) != int(m["R"]) or int(m["seed"]) not in self.eff["seeds"]:
                 continue
             rows.append({"mode": m["mode"], "K": int(m["K"]), "N": int(m["N"]),
-                         "seed": int(m["seed"]), "df": df})
+                         "seed": int(m["seed"]), "R": int(m["R"]), "df": df})
         self.runs = pd.DataFrame(rows)
         if self.runs.empty:
             sys.exit(f"no raw runs matching the manifest in {raw_dir}")
 
-    def select(self, mode=None, K=None, N=None) -> list[pd.DataFrame]:
-        r = self.runs
+    def select(self, mode=None, K=None, N=None, R=None) -> list[pd.DataFrame]:
+        r = self.runs[self.runs["R"] == (R or self.eff["rounds"])]
         if mode is not None:
             r = r[r["mode"] == mode]
         if K is not None:
@@ -112,6 +113,13 @@ def summarize(df: pd.DataFrame) -> dict:
         "hs_kb": hs_b.sum() / 1024,
         "wire_mb": df.bytes_wire_total.sum() / 2**20,
         "pct_wall": 100 * df.crypto_total_s.sum() / df.wall_s.sum(),
+        # round time: wall clock incl. local training, excl. test-set evaluation
+        "pct_round": 100 * df.crypto_total_s.sum() / (df.wall_s - df.eval_s).sum(),
+        "crypto_ms_round": df.crypto_total_s.mean() * 1e3,
+        "wire_kb_round": df.bytes_wire_total.mean() / 1024,
+        "overhead_b_round": (df.bytes_wire_total - df.plaintext_bytes).mean(),
+        "overhead_pct_payload": 100 * (df.bytes_wire_total - df.plaintext_bytes).sum()
+                                / df.plaintext_bytes.sum(),
         "final_acc": df.test_acc.iloc[-1] * 100,
         **{f"{op}_ms": df[f"{op}_s"].sum() * 1e3
            for op in ("keygen", "encaps", "decaps", "sign", "verify")},
@@ -230,95 +238,119 @@ def fig_bytes(d: Data) -> Path:
     return _save(fig, d, "bytes_components")
 
 
-NSTAR_TOL = 0.10  # handshake overhead per round must be <= 10% of the symmetric-only floor
+NSTAR_EPS = (0.05, 0.10, 0.25)  # tolerances: handshake overhead per round <= eps * floor
+EPS_DASH = {0.05: (0, (1, 1.2)), 0.10: (0, (4, 1.5)), 0.25: (0, (6, 1.5, 1, 1.5))}
 
 
 def compute_nstar(d: Data) -> dict:
-    """N* = smallest swept N whose handshake overhead per round is within NSTAR_TOL of the
-    asymptotic floor, i.e. the symmetric-only (large-N) per-round crypto cost.
+    """Re-key cadence analysis on the amortized sweep (R = sweep_rounds).
 
-    floor             = mean over all amortized sweep runs of (AES-GCM path time) / R
-    overhead(N)       = (handshake crypto time over the session) / R
-    criterion         = overhead(N) <= NSTAR_TOL * floor
+    f  = symmetric-only floor: mean per-round AES-GCM path time (round-key HKDF + encrypt +
+         decrypt, all clients + server), pooled over every round of every sweep run.
+    h  = extra cost of one handshake round: mean over handshake rounds of
+         (crypto time - AES-GCM path time), pooled over all sweep runs.
+    overhead(N) = measured handshake crypto time over the session / R   (per round)
+    Analytical  N*(eps) = ceil(h / (eps * f))   from the cost model overhead(N) ~ h / N.
+    Measured    N*(eps) = smallest swept N with overhead(N) <= eps * f.
     """
-    Ns, R, K = d.eff["N_sweep"], d.eff["rounds"], d.eff["K"]
-    per_n = {}
-    sym_per_round = []
+    Ns, R, K = d.eff["N_sweep"], d.eff.get("sweep_rounds", d.eff["rounds"]), d.eff["K"]
+    sym_rounds, hs_rounds, per_n = [], [], {}
     for n in Ns:
-        runs = pd.DataFrame([summarize(df) for df in d.select("amortized", K, n)])
-        sym_per_round += list(runs["symmetric_ms"] / R)
-        per_n[n] = runs
-    floor = float(np.mean(sym_per_round))
+        dfs = d.select("amortized", K, n, R)
+        per_n[n] = pd.DataFrame([summarize(df) for df in dfs])
+        for df in dfs:
+            sym = (df.sym_encrypt_s + df.sym_decrypt_s) * 1e3
+            sym_rounds += list(sym)
+            hs = df.handshakes > 0
+            hs_rounds += list(df.crypto_total_s[hs] * 1e3 - sym[hs])
+    f, h = float(np.mean(sym_rounds)), float(np.mean(hs_rounds))
+    h_sd = float(np.std(hs_rounds, ddof=1)) if len(hs_rounds) > 1 else 0.0
     rows = []
     for n in Ns:
         runs = per_n[n]
-        hs = runs["handshake_ms"] / R
-        tot = runs["crypto_ms"] / R
-        rows.append({
-            "N": n, "handshakes": int(runs["handshakes"].mean()),
-            "crypto_per_round_ms": float(tot.mean()), "crypto_per_round_sd": float(tot.std(ddof=1)) if len(tot) > 1 else 0.0,
-            "hs_overhead_per_round_ms": float(hs.mean()),
-            "hs_overhead_per_round_sd": float(hs.std(ddof=1)) if len(hs) > 1 else 0.0,
-            "hs_overhead_pct_of_floor": float(100 * hs.mean() / floor),
-            "within_tol": bool(hs.mean() <= NSTAR_TOL * floor),
-        })
-    nstar = next((r["N"] for r in rows if r["within_tol"]), None)
-    return {"criterion": f"handshake overhead per round <= {NSTAR_TOL:.0%} of symmetric-only floor",
-            "K": K, "rounds": R, "floor_per_round_ms": floor, "threshold_ms": NSTAR_TOL * floor,
-            "N_star": nstar, "N_swept": Ns, "rows": rows}
+        ov, tot = runs["handshake_ms"] / R, runs["crypto_ms"] / R
+        sd = (lambda x: float(x.std(ddof=1)) if len(x) > 1 else 0.0)
+        rows.append({"N": n, "handshake_rounds": int(np.ceil(R / n)),
+                     "crypto_per_round_ms": float(tot.mean()), "crypto_per_round_sd": sd(tot),
+                     "hs_overhead_per_round_ms": float(ov.mean()),
+                     "hs_overhead_per_round_sd": sd(ov),
+                     "hs_overhead_pct_of_floor": float(100 * ov.mean() / f),
+                     "model_overhead_per_round_ms": h / n})
+    eps_rows = []
+    for eps in NSTAR_EPS:
+        pred = int(np.ceil(h / (eps * f)))
+        meas = next((r["N"] for r in rows if r["hs_overhead_per_round_ms"] <= eps * f), None)
+        eps_rows.append({"eps": eps, "threshold_ms": eps * f, "N_star_predicted": pred,
+                         "N_star_predicted_on_grid": next((n for n in Ns if n >= pred), None),
+                         "N_star_measured": meas})
+    return {"definition": "N*(eps) = smallest N with handshake overhead per round <= eps * f; "
+                          "analytical N*(eps) = ceil(h / (eps * f))",
+            "K": K, "rounds": R, "N_swept": Ns, "f_floor_ms_per_round": f,
+            "h_handshake_round_extra_ms": h, "h_sd_ms": h_sd,
+            "n_handshake_rounds_pooled": len(hs_rounds), "eps": eps_rows, "rows": rows}
 
 
-def _nstar_label(ns: dict) -> str:
-    if ns["N_star"] is None:
-        return f"$N^* > {max(ns['N_swept'])}$ (not reached in sweep)"
-    return f"$N^*={ns['N_star']}$"
+def _fmt_n(n) -> str:
+    return "--" if n is None else str(n)
 
 
 def fig_rekey(d: Data) -> Path:
     ns = compute_nstar(d)
-    Ns, R, K = d.eff["N_sweep"], d.eff["rounds"], d.eff["K"]
+    Ns, R, K = ns["N_swept"], ns["rounds"], ns["K"]
     rows = {r["N"]: r for r in ns["rows"]}
-    floor, thr = ns["floor_per_round_ms"], ns["threshold_ms"]
-    mu = {n: stats(d.select("amortized", K, n)) for n in Ns}
-    nv_mu, _ = stats(d.select("naive_pqc", K, 1))
-    # Cost model: handshake cost per handshake round, measured at the smallest N.
-    per_hs_round = rows[Ns[0]]["hs_overhead_per_round_ms"] * R / np.ceil(R / Ns[0])
+    f, h = ns["f_floor_ms_per_round"], ns["h_handshake_round_extra_ms"]
+    nv_mu, _ = stats(d.select("naive_pqc", K, 1, R))
     xs = np.array(Ns)
-    model_x = np.unique(np.geomspace(min(Ns), max(Ns), 200).astype(int))
+    x_hi = max(Ns)
+    model_x = np.geomspace(1, x_hi, 300)
     m = "amortized"
 
-    fig, (a, b) = plt.subplots(2, 1, figsize=(COL_W, 3.4), sharex=True)
-    a.axhspan(floor, floor + thr, color=COLOR[m], alpha=0.10, linewidth=0,
-              label=f"floor + {NSTAR_TOL:.0%} band")
+    fig, (a, b) = plt.subplots(2, 1, figsize=(COL_W, 3.7), sharex=True,
+                               gridspec_kw={"height_ratios": [1.6, 1]})
     a.errorbar(xs, [rows[n]["crypto_per_round_ms"] for n in Ns],
                yerr=[rows[n]["crypto_per_round_sd"] for n in Ns], color=COLOR[m],
-               marker=MARKER[m], capsize=2, linewidth=1.4, label=LABEL[m] + " (measured)")
-    a.plot(model_x, floor + per_hs_round * np.ceil(R / model_x) / R, color=INK_2, linewidth=0.7,
-           linestyle=(0, (4, 2)), label=r"model: floor $+\,\lceil R/N\rceil h/R$")
+               marker=MARKER[m], capsize=2, linewidth=1.4, label=LABEL[m] + " (measured)", zorder=3)
+    a.plot(model_x, f + h / model_x, color=INK, linewidth=0.8, label=r"model: $f + h/N$", zorder=2)
     a.axhline(nv_mu["crypto_ms"] / R, color=COLOR["naive_pqc"], linestyle="--", linewidth=1,
               label=LABEL["naive_pqc"])
-    a.axhline(floor, color=INK_2, linestyle=":", linewidth=1, label="Symmetric-only floor")
-    if ns["N_star"] is not None:
-        a.axvline(ns["N_star"], color=GRID, linewidth=4, zorder=0)
-        b.axvline(ns["N_star"], color=GRID, linewidth=4, zorder=0)
-    a.text(0.02, floor / 2, _nstar_label(ns) + f": handshake overhead/round "
-           f"$\\leq${NSTAR_TOL:.0%} of floor",
-           transform=blended_transform_factory(a.transAxes, a.transData),
-           ha="left", va="center", fontsize=6.5, color=INK)
-    a.set_ylim(bottom=0)
+    a.axhline(f, color=INK_2, linestyle=":", linewidth=1, label="symmetric-only floor $f$")
+    lines, eps_handles = [], []
+    for e in ns["eps"]:
+        eps, pred, meas = e["eps"], e["N_star_predicted"], e["N_star_measured"]
+        eps_handles.append(a.axhline(f * (1 + eps), color=INK_2, linewidth=0.6,
+                                     linestyle=EPS_DASH[eps], zorder=1,
+                                     label=f"$f(1+\\varepsilon)$, $\\varepsilon$={eps:.0%}"))
+        if pred <= x_hi:  # predicted N*: open circle on the model curve
+            a.plot(pred, f + h / pred, "o", ms=4.5, mfc="white", mec=INK, mew=0.8, zorder=4)
+        if meas is not None:  # measured N*: filled diamond on the measured curve
+            a.plot(meas, rows[meas]["crypto_per_round_ms"], "D", ms=3.5, color=INK, zorder=5)
+        lines.append(f"{eps:>4.0%}   {pred:>5}   {_fmt_n(meas):>5}")
+    a.text(0.03, 0.04, " $\\varepsilon$   $N^*$pred  $N^*$meas\n" + "\n".join(lines),
+           transform=a.transAxes, fontsize=6, family="monospace", color=INK, va="bottom",
+           bbox=dict(boxstyle="round,pad=0.25", fc="white", ec=GRID, lw=0.5))
+    a.plot([], [], "o", ms=4.5, mfc="white", mec=INK, mew=0.8, label="$N^*$ predicted")
+    a.plot([], [], "D", ms=3.5, color=INK, label="$N^*$ measured")
+    a.set_ylim(0, max(rows[Ns[0]]["crypto_per_round_ms"], nv_mu["crypto_ms"] / R) * 1.08)
+    eps_key = a.legend(handles=eps_handles, loc="lower right", fontsize=6, handlelength=2.4,
+                       frameon=True, framealpha=1, edgecolor=GRID, borderpad=0.3)
+    eps_key.get_frame().set_linewidth(0.5)
+    a.add_artist(eps_key)
     a.set_ylabel("Crypto time per round (ms)")
-    a.legend(loc="lower left", bbox_to_anchor=(0, 1.02), ncol=2, fontsize=6.5,
+    main_h = [hd for hd in a.get_legend_handles_labels()[0] if hd not in eps_handles]
+    a.legend(handles=main_h, loc="lower left", bbox_to_anchor=(0, 1.02), ncol=2, fontsize=6.5,
              handlelength=2.0, columnspacing=1.0, borderaxespad=0)
 
-    b.plot(xs, [mu[n][0]["hs_kb"] for n in Ns], color=COLOR[m], marker=MARKER[m], label=LABEL[m])
-    b.axhline(nv_mu["hs_kb"], color=COLOR["naive_pqc"], linestyle="--", linewidth=1,
+    b.plot(xs, [stats(d.select(m, K, n, R))[0]["hs_kb"] / R for n in Ns], color=COLOR[m],
+           marker=MARKER[m], label=LABEL[m])
+    b.axhline(nv_mu["hs_kb"] / R, color=COLOR["naive_pqc"], linestyle="--", linewidth=1,
               label=LABEL["naive_pqc"])
     b.set_ylim(bottom=0)
-    b.set_ylabel(f"Handshake bytes / client,\n{R} rounds (KB)")
-    b.set_xscale("log", base=2)
+    b.set_ylabel("Handshake KB /\nclient / round")
+    b.set_xscale("log")
     b.xaxis.set_major_locator(FixedLocator(Ns))
     b.xaxis.set_minor_locator(NullLocator())
     b.set_xticklabels([str(n) for n in Ns])
+    b.set_xlim(min(Ns) / 1.15, x_hi * 1.15)
     b.set_xlabel(f"Re-key interval $N$ (rounds), $K={K}$, $R={R}$")
     b.legend(loc="upper right", fontsize=6.5)
     fig.align_ylabels()
@@ -405,12 +437,13 @@ def table_main(d: Data) -> Path:
                                 _pm(mu["crypto_ms"], sd["crypto_ms"]),
                                 _pm(mu["handshake_ms"], sd["handshake_ms"]),
                                 _pm(mu["symmetric_ms"], sd["symmetric_ms"]),
-                                f"{mu['hs_kb']:.1f}", _pm(mu["pct_wall"], sd["pct_wall"], "{:.3f}"),
+                                f"{mu['hs_kb']:.1f}", _pm(mu["pct_round"], sd["pct_round"], "{:.3f}"),
                                 _pm(mu["final_acc"], sd["final_acc"])]))
     hdr = ("Mode & $N$ & HS & Crypto (ms) & Handshake (ms) & AES-GCM (ms) & "
-           "HS KB/client & \\% wall & Acc. (\\%)")
+           "HS KB/client & \\% round & Acc. (\\%)")
     note = (f"$K={d.eff['K']}$, {d.eff['rounds']} rounds, {len(d.eff['seeds'])} seeds; "
-            "times summed over all clients and the server; HS = handshakes.")
+            "times summed over all clients and the server; HS = handshakes; \\% round = crypto "
+            "share of wall-clock round time incl.\\ local training, excl.\\ test-set evaluation.")
     return _write_table("main_comparison", d, _table(
         "table*", "Main comparison of the three modes", "tab:main", "lrrrrrrrr", hdr, rows, note))
 
@@ -430,31 +463,60 @@ def table_primitives(d: Data) -> Path:
 
 def table_rekey(d: Data) -> Path:
     ns = compute_nstar(d)
-    (OUT / "tables" / "nstar.json").write_text(json.dumps(
-        {**ns, "placeholder": d.quick}, indent=2))
-    K, R = d.eff["K"], d.eff["rounds"]
+    (OUT / "tables" / "nstar.json").write_text(json.dumps({**ns, "placeholder": d.quick}, indent=2))
+    K, R = ns["K"], ns["rounds"]
+    f, h = ns["f_floor_ms_per_round"], ns["h_handshake_round_extra_ms"]
     rows = []
     for r in ns["rows"]:
-        mu, sd = stats(d.select("amortized", K, r["N"]))
-        mark = "$\\checkmark$" if r["within_tol"] else ""
-        n_cell = f"\\textbf{{{r['N']}}}" if r["N"] == ns["N_star"] else str(r["N"])
         rows.append(" & ".join([
-            n_cell, f"{r['handshakes']}", _pm(mu["crypto_ms"], sd["crypto_ms"]),
+            str(r["N"]), str(r["handshake_rounds"]),
+            _pm(r["crypto_per_round_ms"], r["crypto_per_round_sd"], "{:.3f}"),
             _pm(r["hs_overhead_per_round_ms"], r["hs_overhead_per_round_sd"], "{:.3f}"),
-            f"{r['hs_overhead_pct_of_floor']:.1f} {mark}", f"{mu['hs_kb']:.1f}"]))
-    mu, sd = stats(d.select("naive_pqc", K, 1))
-    rows.append("\\midrule\nNaive PQC & " + " & ".join([
-        f"{mu['handshakes']:.0f}", _pm(mu["crypto_ms"], sd["crypto_ms"]),
-        f"{mu['handshake_ms'] / R:.3f}", f"{100 * mu['handshake_ms'] / R / ns['floor_per_round_ms']:.1f}",
-        f"{mu['hs_kb']:.1f}"]))
-    hdr = ("$N$ & HS & Crypto (ms) & HS overhead/round (ms) & \\% of floor & HS KB/client")
-    star = ("not reached in the sweep" if ns["N_star"] is None else f"$N^*={ns['N_star']}$ (bold)")
-    note = (f"$K={K}$, {R} rounds, {len(d.eff['seeds'])} seeds. Symmetric-only floor "
-            f"{ns['floor_per_round_ms']:.3f}\\,ms/round; $N^*$ = smallest $N$ with handshake "
-            f"overhead per round $\\leq${NSTAR_TOL * 100:.0f}\\% of the floor: {star}.")
-    return _write_table("rekey_sweep", d, _table(
-        "table", "Amortized PQC versus re-key interval $N$", "tab:rekey", "lrrrrr", hdr, rows,
-        note))
+            f"{r['model_overhead_per_round_ms']:.3f}", f"{r['hs_overhead_pct_of_floor']:.1f}"]))
+    nv, _ = stats(d.select("naive_pqc", K, 1, R))
+    rows.append(f"\\midrule\nNaive PQC & {R} & {nv['crypto_ms'] / R:.3f} & "
+                f"{nv['handshake_ms'] / R:.3f} & -- & {100 * nv['handshake_ms'] / R / f:.1f}")
+    hdr = ("$N$ & HS rounds & Crypto/round & HS overhead/round & Model $h/N$ & \\% of $f$")
+    lines = [
+        "\\begin{table}[t]", "\\centering", "\\footnotesize",
+        "\\caption{Amortized PQC versus re-key interval $N$ (times in ms)}", "\\label{tab:rekey}",
+        "\\setlength{\\tabcolsep}{3.5pt}",
+        "\\begin{tabular}{lrrrrr}", "\\toprule", hdr + " \\\\", "\\midrule",
+        *[x + " \\\\" for x in rows], "\\bottomrule", "\\end{tabular}", "\\\\[6pt]",
+        "\\begin{tabular}{lrrr}", "\\toprule",
+        "$\\varepsilon$ & $N^*$ predicted $\\lceil h/(\\varepsilon f)\\rceil$ & "
+        "next swept $N$ & $N^*$ measured \\\\", "\\midrule",
+        *[f"{e['eps'] * 100:.0f}\\% & {e['N_star_predicted']} & "
+          f"{_fmt_n(e['N_star_predicted_on_grid'])} & {_fmt_n(e['N_star_measured'])} \\\\"
+          for e in ns["eps"]],
+        "\\bottomrule", "\\end{tabular}",
+        f"\\\\[2pt]\\parbox{{\\linewidth}}{{\\scriptsize $K={K}$, $R={R}$, "
+        f"{len(d.eff['seeds'])} seeds. $f={f:.3f}$\\,ms/round (symmetric-only floor), "
+        f"$h={h:.3f}\\pm{ns['h_sd_ms']:.3f}$\\,ms (extra cost of one handshake round, "
+        f"{ns['n_handshake_rounds_pooled']} rounds pooled). Measured $N^*$: smallest swept $N$ "
+        f"with handshake overhead per round $\\leq\\varepsilon f$; -- = not reached.}}",
+        "\\end{table}"]
+    return _write_table("rekey_sweep", d, "\n".join(lines) + "\n")
+
+
+def table_overhead(d: Data) -> Path:
+    rows = []
+    for m in MODES:
+        mu, sd = stats(d.main(m))
+        rows.append(" & ".join([
+            LABEL[m], _pm(mu["crypto_ms_round"], sd["crypto_ms_round"], "{:.3f}"),
+            _pm(mu["pct_round"], sd["pct_round"], "{:.3f}"),
+            f"{mu['wire_kb_round']:.1f}", f"{mu['overhead_b_round']:,.0f}".replace(",", "{,}"),
+            f"{mu['overhead_pct_payload']:.3f}"]))
+    hdr = ("Mode & Crypto/round (ms) & Crypto \\% of round & Wire KB/client/round & "
+           "Overhead B/client/round & Overhead \\% of payload")
+    note = (f"$K={d.eff['K']}$, $N={d.eff['N']}$ (Naive PQC: $N=1$), {d.eff['rounds']} rounds, "
+            f"{len(d.eff['seeds'])} seeds. Round time is wall-clock including local training, "
+            "excluding test-set evaluation. Overhead bytes = all protocol bytes beyond the "
+            "serialized update (KEM keys and ciphertexts, signatures, nonce, GCM tag, framing).")
+    return _write_table("overhead", d, _table(
+        "table*", "Compute versus bandwidth overhead per round", "tab:overhead", "lrrrrr",
+        hdr, rows, note))
 
 
 def table_scaling(d: Data) -> Path:
@@ -463,11 +525,11 @@ def table_scaling(d: Data) -> Path:
         cells = [str(K)]
         for m in MODES:
             mu, sd = stats(d.main(m, K))
-            cells += [_pm(mu["crypto_ms"], sd["crypto_ms"]), _pm(mu["pct_wall"], sd["pct_wall"], "{:.3f}")]
+            cells += [_pm(mu["crypto_ms"], sd["crypto_ms"]), _pm(mu["pct_round"], sd["pct_round"], "{:.3f}")]
         rows.append(" & ".join(cells))
     hdr = ("$K$ & " + " & ".join(f"\\multicolumn{{2}}{{c}}{{{LABEL[m]}}}" for m in MODES)
            + " \\\\\n\\cmidrule(lr){2-3}\\cmidrule(lr){4-5}\\cmidrule(lr){6-7}\n & "
-           + " & ".join(["Crypto (ms) & \\% wall"] * 3))
+           + " & ".join(["Crypto (ms) & \\% round"] * 3))
     return _write_table("client_scaling", d, _table(
         "table*", "Crypto cost versus number of clients $K$", "tab:scaling", "lrrrrrr", hdr, rows,
         f"$N={d.eff['N']}$ (Naive PQC: $N=1$), {d.eff['rounds']} rounds, "
@@ -605,17 +667,21 @@ def main() -> int:
 
     for f in (fig_per_round, fig_cumulative, fig_bytes, fig_rekey, fig_scaling, fig_accuracy):
         print(f"  figure  {f(d).relative_to(ROOT)}")
-    for t in (table_main, table_primitives, table_rekey, table_scaling, table_accuracy):
+    for t in (table_main, table_overhead, table_primitives, table_rekey, table_scaling,
+              table_accuracy):
         print(f"  table   {t(d).relative_to(ROOT)}")
     ns = compute_nstar(d)
-    print(f"\n  N* ({ns['criterion']}): floor = {ns['floor_per_round_ms']:.4f} ms/round, "
-          f"threshold = {ns['threshold_ms']:.4f} ms/round")
-    print(f"  {'N':>4} {'HS':>4} {'crypto/round':>13} {'HS overhead/round':>18} {'% of floor':>11}  ok")
+    f, h = ns["f_floor_ms_per_round"], ns["h_handshake_round_extra_ms"]
+    print(f"\n  Re-key cadence (amortized, K={ns['K']}, R={ns['rounds']}): f = {f:.4f} ms/round, "
+          f"h = {h:.4f} +/- {ns['h_sd_ms']:.4f} ms ({ns['n_handshake_rounds_pooled']} handshake rounds)")
+    print(f"  {'N':>4} {'crypto/round':>13} {'HS overhead/round':>18} {'model h/N':>10} {'% of f':>8}")
     for r in ns["rows"]:
-        print(f"  {r['N']:>4} {r['handshakes']:>4} {r['crypto_per_round_ms']:>10.4f} ms "
-              f"{r['hs_overhead_per_round_ms']:>15.4f} ms {r['hs_overhead_pct_of_floor']:>10.1f}%  "
-              f"{'yes' if r['within_tol'] else 'no'}")
-    print(f"  -> N* = {ns['N_star'] if ns['N_star'] is not None else 'not reached (> ' + str(max(ns['N_swept'])) + ')'}\n")
+        print(f"  {r['N']:>4} {r['crypto_per_round_ms']:>10.4f} ms {r['hs_overhead_per_round_ms']:>15.4f} ms "
+              f"{r['model_overhead_per_round_ms']:>10.4f} {r['hs_overhead_pct_of_floor']:>7.1f}%")
+    for e in ns["eps"]:
+        print(f"  eps={e['eps']:>4.0%}: N* predicted = ceil(h/(eps f)) = {e['N_star_predicted']} "
+              f"(next swept N: {_fmt_n(e['N_star_predicted_on_grid'])}), measured = {_fmt_n(e['N_star_measured'])}")
+    print()
     path, passed, total = table_tests(d)
     print(f"  table   {path.relative_to(ROOT)}  ({passed}/{total} test cases passed)")
 
