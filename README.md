@@ -153,3 +153,31 @@ It then runs a live attack. The attack flips a bit in one update and replays two
 updates from an old round, one of them with its round number rewritten. The server must
 reject all three. Finally it saves `results/demo_crypto_time_per_round.png` and
 `results/demo_final_accuracy.png`.
+
+## Experiments
+
+```bash
+python scripts/run_experiments.py --dry-run   # list runs + rough time estimate
+python scripts/run_experiments.py --quick     # pipeline smoke test, ~1 min -> results/quick/
+python scripts/run_experiments.py             # all four experiments, ~2 h on an M-series laptop
+python scripts/run_experiments.py --exp 1,4   # just the main comparison + accuracy validation
+```
+
+| # | Experiment | Configurations |
+|---|---|---|
+| 1 | Main comparison | 3 modes, K=5, 20 rounds, N=5, 5 seeds |
+| 2 | Re-key cadence (amortized) | N in {1, 2, 5, 10, 20}; N=1 is checked against naive_pqc |
+| 3 | Client scaling | K in {3, 5, 10, 20}, all modes |
+| 4 | Accuracy validation | Final and per-round accuracy per mode and seed, from experiment 1 |
+
+How the runner works:
+- **Caching and resume.** Each distinct configuration runs once, and its per-round CSV is
+  cached in `results/raw/`. Experiments share these runs. Re-running the script resumes
+  from the cache; `--force` re-runs everything.
+- **Sequential runs.** Runs execute one after another so they don't distort each other's
+  timings.
+- **Training subset.** By default each client trains on 2,000 samples
+  (`--samples-per-client 0` uses full MNIST shards, which takes about 7× longer).
+- **Outputs.** Summary tables (`mean ± std` over seeds, in `.md` and `.csv`), the per-run
+  `all_runs.csv`, and a `manifest.json` with library versions and machine details go to
+  `results/tables/`.
