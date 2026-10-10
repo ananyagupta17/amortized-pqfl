@@ -136,3 +136,20 @@ How to read the numbers:
   one-off library start-up costs, such as about 4 ms for OpenSSL's first X25519 keygen.
 - **Byte columns are per-client means.**
 - **The model broadcast from server to clients is not encrypted**, and it is not counted.
+
+## Demo
+
+```bash
+python scripts/demo.py     # ~65 s on an M-series laptop
+```
+
+The demo runs K=3 clients for 10 rounds with N=5, under all three modes. Classical also
+re-keys every 5 rounds. Each client trains on 2,000 samples. The demo prints:
+- a per-round log, marking each round as a handshake round or symmetric-only, with
+  crypto time, bytes sent and accuracy;
+- a summary table comparing the three modes.
+
+It then runs a live attack. The attack flips a bit in one update and replays two
+updates from an old round, one of them with its round number rewritten. The server must
+reject all three. Finally it saves `results/demo_crypto_time_per_round.png` and
+`results/demo_final_accuracy.png`.
