@@ -214,9 +214,11 @@ def seal_update(mode: Mode, session: Session, client_id: str, round_num: int,
 
 class ClientCrypto:
     def __init__(self, client_id: str, config: CryptoConfig, identity: KeyPair,
-                 server_public: bytes) -> None:
+                 server_public: bytes, suite: Suite | None = None) -> None:
         self.client_id = client_id
         self.config = config
+        # `suite` overrides config.suite with an equivalent one, e.g. an instrumented wrapper.
+        self.suite = suite or config.suite
         self._identity = identity
         self._server_public = server_public
         self._session: Session | None = None
@@ -231,7 +233,7 @@ class ClientCrypto:
         return self._session is None or self._session.epoch != epoch
 
     def start_handshake(self, round_num: int) -> HandshakeInit:
-        suite = self.config.suite
+        suite = self.suite
         kem_kp = suite.kem.keygen()
         init = HandshakeInit(self.client_id, self.config.epoch_for_round(round_num),
                              kem_kp.public, b"")
@@ -246,7 +248,7 @@ class ClientCrypto:
         init, kem_secret = self._pending
         if resp.client_id != init.client_id or resp.epoch != init.epoch:
             raise AuthenticationError("handshake response does not match the pending init")
-        suite = self.config.suite
+        suite = self.suite
         if not suite.sig.verify(self._server_public, _resp_payload(suite, init, resp),
                                 resp.signature):
             raise AuthenticationError("server signature on handshake response is invalid")
@@ -256,15 +258,16 @@ class ClientCrypto:
 
     def encrypt(self, round_num: int, plaintext: bytes) -> EncryptedUpdate:
         if self.needs_handshake(round_num):
-            raise SessionError(f"client {self.client_id} has no session for epoch "
+            raise SessionError(f"client {self.client_id!r} has no session for epoch "
                                f"{self.config.epoch_for_round(round_num)}; run the handshake")
         assert self._session is not None
         return seal_update(self.config.mode, self._session, self.client_id, round_num, plaintext)
 
 
 class ServerCrypto:
-    def __init__(self, config: CryptoConfig, identity: KeyPair) -> None:
+    def __init__(self, config: CryptoConfig, identity: KeyPair, suite: Suite | None = None) -> None:
         self.config = config
+        self.suite = suite or config.suite
         self._identity = identity
         self._client_keys: dict[str, bytes] = {}
         self._sessions: dict[str, Session] = {}
@@ -279,7 +282,7 @@ class ServerCrypto:
         self._client_keys[client_id] = public_key
 
     def accept_handshake(self, round_num: int, init: HandshakeInit) -> HandshakeResponse:
-        suite = self.config.suite
+        suite = self.suite
         client_pk = self._client_keys.get(init.client_id)
         if client_pk is None:
             raise AuthenticationError(f"unknown client {init.client_id!r}")
@@ -289,7 +292,7 @@ class ServerCrypto:
                              f"requires epoch {expected}")
         current = self._sessions.get(init.client_id)
         if current is not None and init.epoch <= current.epoch:
-            raise ReplayError(f"client {init.client_id} already keyed epoch {current.epoch}")
+            raise ReplayError(f"client {init.client_id!r} already keyed epoch {current.epoch}")
         if not suite.sig.verify(client_pk, _init_payload(suite, init), init.signature):
             raise AuthenticationError("client signature on handshake init is invalid")
 
@@ -311,11 +314,11 @@ class ServerCrypto:
             raise SessionError(f"no session for client {cid!r}")
         expected_epoch = self.config.epoch_for_round(round_num)
         if session.epoch != expected_epoch:
-            raise EpochError(f"client {cid} is keyed for epoch {session.epoch}, "
+            raise EpochError(f"client {cid!r} is keyed for epoch {session.epoch}, "
                              f"round {round_num} requires epoch {expected_epoch}")
         last = self._last_round.get(cid)
         if update.round != round_num or (last is not None and round_num <= last):
-            raise ReplayError(f"update for round {update.round} from client {cid} "
+            raise ReplayError(f"update for round {update.round} from client {cid!r} "
                               f"rejected at round {round_num} (last accepted: {last})")
         if update.epoch != expected_epoch:
             raise EpochError(f"update claims epoch {update.epoch}, expected {expected_epoch}")
@@ -326,6 +329,6 @@ class ServerCrypto:
             plaintext = aead_decrypt(round_key(session.key, round_num), update.nonce,
                                      update.ciphertext, aad)
         except (InvalidTag, ValueError) as e:  # ValueError: malformed nonce length
-            raise AuthenticationError(f"update from client {cid} failed authentication") from e
+            raise AuthenticationError(f"update from client {cid!r} failed authentication") from e
         self._last_round[cid] = round_num
         return plaintext

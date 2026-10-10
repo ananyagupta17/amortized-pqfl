@@ -98,3 +98,41 @@ Design rationale, the threat analysis and the mutation-testing results are in
 [DECISIONS.md](DECISIONS.md).
 
 Run the tests with `python -m pytest tests/ -v`.
+
+## FL harness (`pqfl/fl/`, `pqfl/bench/`)
+
+This is a hand-rolled FedAvg setup. A small CNN (about 215k parameters, 842 KB per update)
+trains on MNIST, split across K simulated clients. Every client update is serialized,
+encrypted through the crypto layer, decrypted and authenticated by the server, and only
+then averaged. Updates that fail authentication are dropped and counted. MNIST is
+downloaded to `data/` on first use.
+
+```bash
+python scripts/run_fl.py --mode amortized -K 10 --rounds 20 -N 5 --seed 0
+python scripts/run_fl.py --mode naive_pqc -K 10 --rounds 20 --seed 0
+python scripts/run_fl.py --mode classical -K 10 --rounds 20 --seed 0         # key once
+python scripts/run_fl.py --mode classical -K 10 --rounds 20 -N 5 --seed 0    # re-key every 5
+# quick run: --samples-per-client 2000; non-IID split: --split dirichlet --alpha 0.5
+```
+
+Each run writes one row per round to `results/<mode>_K<K>_N<N>_seed<seed>.csv`:
+
+| Column(s) | Meaning |
+|---|---|
+| `mode, K, N, seed, round, epoch` | Run configuration and the key epoch for this round |
+| `handshakes, accepted, rejected` | Handshakes run this round; updates accepted or rejected by the server |
+| `keygen_s, encaps_s, decaps_s, sign_s, verify_s` | Time in each primitive (KEM keygen only; identity keys are set up once, before round 0) |
+| `sym_encrypt_s, sym_decrypt_s` | `ClientCrypto.encrypt` / `ServerCrypto.decrypt`: round-key HKDF + AES-256-GCM |
+| `crypto_total_s` | All protocol calls, including handshake key derivation and overhead. Excludes training, serialization and evaluation |
+| `bytes_key, bytes_kem_ct, bytes_sig, bytes_payload` | Per client: KEM public key, KEM ciphertext, both signatures, encrypted update (nonce + ciphertext + tag) |
+| `bytes_wire_total` | Per client: all protocol messages including headers, both directions |
+| `plaintext_bytes` | Per client: serialized update before encryption |
+| `train_s, eval_s, wall_s, test_acc` | Local training (all clients), test-set evaluation, the whole round, accuracy after aggregation |
+
+How to read the numbers:
+- **Timing** uses `time.perf_counter`. Clients run one after another in a single
+  process, so time columns are **summed over all K clients and the server**.
+- **Warm-up.** Each primitive runs once, untimed, before round 0. The first call pays
+  one-off library start-up costs, such as about 4 ms for OpenSSL's first X25519 keygen.
+- **Byte columns are per-client means.**
+- **The model broadcast from server to clients is not encrypted**, and it is not counted.
