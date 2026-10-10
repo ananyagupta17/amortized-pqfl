@@ -159,14 +159,14 @@ reject all three. Finally it saves `results/demo_crypto_time_per_round.png` and
 ```bash
 python scripts/run_experiments.py --dry-run   # list runs + rough time estimate
 python scripts/run_experiments.py --quick     # pipeline smoke test, ~1 min -> results/quick/
-python scripts/run_experiments.py             # all four experiments, ~2 h on an M-series laptop
+python scripts/run_experiments.py             # all four experiments, ~4 h on an M-series laptop
 python scripts/run_experiments.py --exp 1,4   # just the main comparison + accuracy validation
 ```
 
 | # | Experiment | Configurations |
 |---|---|---|
 | 1 | Main comparison | 3 modes, K=5, 20 rounds, N=5, 5 seeds |
-| 2 | Re-key cadence (amortized) | N in {1, 2, 5, 10, 20}; N=1 is checked against naive_pqc |
+| 2 | Re-key cadence (amortized) | R=60, N in {1, 2, 3, 5, 10, 15, 20, 30, 60}; N=1 is checked against a naive_pqc run at the same R |
 | 3 | Client scaling | K in {3, 5, 10, 20}, all modes |
 | 4 | Accuracy validation | Final and per-round accuracy per mode and seed, from experiment 1 |
 

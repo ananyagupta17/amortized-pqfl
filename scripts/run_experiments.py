@@ -7,7 +7,9 @@
 
 Experiments
   1. Main comparison: classical / naive_pqc / amortized, K=5, 20 rounds, N=5, 5 seeds.
-  2. Re-key cadence sweep (amortized): N in {1, 2, 5, 10, 20}; N=1 is checked against naive_pqc.
+  2. Re-key cadence sweep (amortized): N in {1, 2, 3, 5, 10, 15, 20, 30, 60} over R=60 rounds
+     (longer than the other experiments so large N is not capped by R); N=1 is checked against a
+     naive_pqc reference run at the same R.
   3. Client scaling: K in {3, 5, 10, 20}, all modes.
   4. Accuracy validation: final accuracy per mode and seed (from experiment 1's runs).
 
@@ -57,18 +59,18 @@ class Spec:
         return RAW / f"{self.mode}_K{self.K}_N{n}_seed{self.seed}_R{self.rounds}_S{s}.csv"
 
 
-def plan(exps: set[int], seeds: list[int], rounds: int, samples: int | None,
+def plan(exps: set[int], seeds: list[int], rounds: int, sweep_rounds: int, samples: int | None,
          K_main: int, N_main: int, N_sweep: list[int], K_sweep: list[int]) -> dict[int, list[Spec]]:
-    def spec(mode, K, N, seed):
-        return Spec(mode, K, None if mode == "naive_pqc" else N, seed, rounds, samples)
+    def spec(mode, K, N, seed, R=rounds):
+        return Spec(mode, K, None if mode == "naive_pqc" else N, seed, R, samples)
 
     main = [spec(m, K_main, N_main, s) for m in MODES for s in seeds]
     out = {}
     if 1 in exps or 4 in exps:
         out[1] = main
     if 2 in exps:
-        out[2] = ([spec("amortized", K_main, n, s) for n in N_sweep for s in seeds]
-                  + [spec("naive_pqc", K_main, None, s) for s in seeds])
+        out[2] = ([spec("amortized", K_main, n, s, sweep_rounds) for n in N_sweep for s in seeds]
+                  + [spec("naive_pqc", K_main, None, s, sweep_rounds) for s in seeds])
     if 3 in exps:
         out[3] = [spec(m, k, N_main, s) for k in K_sweep for m in MODES for s in seeds]
     return out
@@ -113,6 +115,13 @@ def summarize_run(spec: Spec, df: pd.DataFrame) -> dict:
         "handshake_kb_per_client": hs_bytes.sum() / 1024,
         "wire_mb_per_client": df.bytes_wire_total.sum() / 2**20,
         "crypto_pct_of_wall": 100 * df.crypto_total_s.sum() / df.wall_s.sum(),
+        # Round time = wall clock incl. local training, excl. the test-set evaluation (which is
+        # instrumentation, not part of the protocol).
+        "crypto_pct_of_round": 100 * df.crypto_total_s.sum() / (df.wall_s - df.eval_s).sum(),
+        "wire_kb_per_client_round": df.bytes_wire_total.mean() / 1024,
+        "overhead_b_per_client_round": (df.bytes_wire_total - df.plaintext_bytes).mean(),
+        "overhead_pct_of_payload": 100 * (df.bytes_wire_total - df.plaintext_bytes).sum()
+                                   / df.plaintext_bytes.sum(),
         "train_s": df.train_s.sum(),
         "wall_s": df.wall_s.sum(),
         "final_acc": df.test_acc.iloc[-1] * 100,
@@ -131,13 +140,19 @@ FMT = {"handshakes": "{:.0f}", "crypto_ms": "{:.2f}", "handshake_ms": "{:.2f}",
        "symmetric_ms": "{:.2f}", "crypto_ms_per_round": "{:.3f}", "keygen_ms": "{:.3f}",
        "encaps_ms": "{:.3f}", "decaps_ms": "{:.3f}", "sign_ms": "{:.3f}", "verify_ms": "{:.3f}",
        "handshake_kb_per_client": "{:.1f}", "wire_mb_per_client": "{:.2f}",
-       "crypto_pct_of_wall": "{:.3f}", "train_s": "{:.1f}", "wall_s": "{:.1f}",
+       "crypto_pct_of_wall": "{:.3f}", "crypto_pct_of_round": "{:.3f}",
+       "wire_kb_per_client_round": "{:.1f}", "overhead_b_per_client_round": "{:.0f}",
+       "overhead_pct_of_payload": "{:.3f}", "train_s": "{:.1f}", "wall_s": "{:.1f}",
        "final_acc": "{:.2f}"}
 
 LABELS = {"crypto_ms": "crypto total (ms)", "handshake_ms": "handshake crypto (ms)",
           "symmetric_ms": "AES-GCM path (ms)", "crypto_ms_per_round": "crypto / round (ms)",
           "handshake_kb_per_client": "handshake KB / client",
           "wire_mb_per_client": "wire MB / client", "crypto_pct_of_wall": "crypto % of wall",
+          "crypto_pct_of_round": "crypto % of round time",
+          "wire_kb_per_client_round": "wire KB / client / round",
+          "overhead_b_per_client_round": "protocol overhead B / client / round",
+          "overhead_pct_of_payload": "overhead % of payload",
           "final_acc": "final acc (%)", "handshakes": "handshakes",
           "keygen_ms": "keygen (ms)", "encaps_ms": "encaps (ms)", "decaps_ms": "decaps (ms)",
           "sign_ms": "sign (ms)", "verify_ms": "verify (ms)", "wall_s": "wall (s)"}
@@ -171,8 +186,11 @@ def save_table(name: str, agg: pd.DataFrame, keys: list[str], metrics: list[str]
 # --- Experiments -----------------------------------------------------------------
 
 MAIN_METRICS = ["handshakes", "crypto_ms", "handshake_ms", "symmetric_ms",
-                "handshake_kb_per_client", "wire_mb_per_client", "crypto_pct_of_wall",
+                "handshake_kb_per_client", "wire_mb_per_client", "crypto_pct_of_round",
                 "final_acc"]
+OVERHEAD_METRICS = ["crypto_ms_per_round", "crypto_pct_of_round", "crypto_pct_of_wall",
+                    "wire_kb_per_client_round", "overhead_b_per_client_round",
+                    "overhead_pct_of_payload"]
 OP_METRICS = ["keygen_ms", "encaps_ms", "decaps_ms", "sign_ms", "verify_ms"]
 
 
@@ -183,6 +201,10 @@ def exp_main(runs: pd.DataFrame) -> str:
     md = save_table("main_comparison", agg, ["mode", "K", "N"], MAIN_METRICS, note)
     md += "\nPer-primitive time (whole session):\n\n" + save_table(
         "main_comparison_primitives", agg, ["mode", "K", "N"], OP_METRICS)
+    agg = aggregate(runs, ["mode", "K", "N"], OVERHEAD_METRICS)
+    md += "\nCompute vs bandwidth overhead (per round; round time includes local training, "
+    md += "excludes test-set evaluation):\n\n" + save_table(
+        "overhead", agg, ["mode", "K", "N"], OVERHEAD_METRICS)
     return md
 
 
@@ -190,8 +212,8 @@ def exp_rekey(runs: pd.DataFrame) -> str:
     amort = runs[runs["mode"] == "amortized"].sort_values(["N", "seed"])
     naive = runs[runs["mode"] == "naive_pqc"]
     both = pd.concat([amort, naive])
-    metrics = ["handshakes", "crypto_ms", "handshake_ms", "handshake_kb_per_client",
-               "wire_mb_per_client", "crypto_pct_of_wall"]
+    metrics = ["handshakes", "crypto_ms", "crypto_ms_per_round", "handshake_ms",
+               "handshake_kb_per_client", "crypto_pct_of_round"]
     agg = aggregate(both, ["mode", "N"], metrics)
     md = save_table("rekey_sweep", agg, ["mode", "N"], metrics,
                     "Experiment 2: re-key cadence sweep (amortized), naive_pqc as reference.")
@@ -218,7 +240,7 @@ def exp_rekey(runs: pd.DataFrame) -> str:
 
 def exp_scaling(runs: pd.DataFrame) -> str:
     metrics = ["handshakes", "crypto_ms", "handshake_ms", "crypto_ms_per_round",
-               "handshake_kb_per_client", "crypto_pct_of_wall", "wall_s"]
+               "handshake_kb_per_client", "crypto_pct_of_round", "wall_s"]
     agg = aggregate(runs.sort_values(["K", "mode"]), ["K", "mode", "N"], metrics)
     return save_table("client_scaling", agg, ["K", "mode", "N"], metrics,
                       "Experiment 3: client scaling. Crypto time is summed over all K clients "
@@ -276,28 +298,31 @@ def main() -> int:
                    help="training subset per client; 0 = full MNIST shard (much slower)")
     p.add_argument("--K", type=int, default=5, help="clients for experiments 1, 2")
     p.add_argument("--N", type=int, default=5, help="re-key interval for experiments 1, 3")
-    p.add_argument("--N-sweep", default="1,2,5,10,20")
+    p.add_argument("--N-sweep", default="1,2,3,5,10,15,20,30,60")
+    p.add_argument("--sweep-rounds", type=int, default=60, help="rounds for experiment 2 only")
     p.add_argument("--K-sweep", default="3,5,10,20")
     p.add_argument("--quick", action="store_true",
-                   help="pipeline smoke test: 2 seeds, 4 rounds, N=2, small sweeps, 300 samples")
+                   help="pipeline smoke test: 2 seeds, 4 rounds (8 for the N sweep), N=2, "
+                        "small sweeps, 300 samples")
     p.add_argument("--dry-run", action="store_true")
     p.add_argument("--force", action="store_true", help="re-run even if raw CSVs exist")
     args = p.parse_args()
 
     exps = {int(x) for x in args.exp.split(",")}
-    seeds, rounds, N = list(range(args.seeds)), args.rounds, args.N
+    seeds, rounds, N, sweep_rounds = list(range(args.seeds)), args.rounds, args.N, args.sweep_rounds
     N_sweep = [int(x) for x in args.N_sweep.split(",")]
     K_sweep = [int(x) for x in args.K_sweep.split(",")]
     samples = args.samples_per_client or None
     global RAW, TABLES
     if args.quick:
-        seeds, rounds, N, samples = [0, 1], 4, 2, 300
-        N_sweep, K_sweep = [1, 2, 4], [3, 5]
+        seeds, rounds, N, samples, sweep_rounds = [0, 1], 4, 2, 300, 8
+        N_sweep, K_sweep = [1, 2, 4, 8], [3, 5]
         RAW, TABLES = RESULTS / "quick" / "raw", RESULTS / "quick" / "tables"
 
-    effective = {"seeds": seeds, "rounds": rounds, "K": args.K, "N": N, "N_sweep": N_sweep,
+    effective = {"seeds": seeds, "rounds": rounds, "sweep_rounds": sweep_rounds, "K": args.K,
+                 "N": N, "N_sweep": N_sweep,
                  "K_sweep": K_sweep, "samples_per_client": samples, "raw_dir": str(RAW)}
-    by_exp = plan(exps, seeds, rounds, samples, args.K, N, N_sweep, K_sweep)
+    by_exp = plan(exps, seeds, rounds, sweep_rounds, samples, args.K, N, N_sweep, K_sweep)
     unique = list(dict.fromkeys(s for specs in by_exp.values() for s in specs))
     todo = [s for s in unique if args.force or not s.path.exists()]
     est = sum(estimate_seconds(s) for s in todo)
