@@ -1,81 +1,136 @@
 {
   "definition": "N*(eps) = smallest N with handshake overhead per round <= eps * f; analytical N*(eps) = ceil(h / (eps * f))",
   "K": 5,
-  "rounds": 8,
+  "rounds": 60,
   "N_swept": [
     1,
     2,
-    4,
-    8
+    3,
+    5,
+    10,
+    15,
+    20,
+    30,
+    60
   ],
-  "f_floor_ms_per_round": 1.6155194916790485,
-  "h_handshake_round_extra_ms": 2.8029340979022894,
-  "h_sd_ms": 0.281138373298203,
-  "n_handshake_rounds_pooled": 30,
+  "f_floor_ms_per_round": 1.5157572236945887,
+  "h_handshake_round_extra_ms": 2.638495930612302,
+  "h_sd_ms": 0.2069832999019329,
+  "n_handshake_rounds_pooled": 690,
   "eps": [
     {
       "eps": 0.05,
-      "threshold_ms": 0.08077597458395243,
+      "threshold_ms": 0.07578786118472944,
       "N_star_predicted": 35,
-      "N_star_predicted_on_grid": null,
-      "N_star_measured": null
+      "N_star_predicted_on_grid": 60,
+      "N_star_measured": 60
     },
     {
       "eps": 0.1,
-      "threshold_ms": 0.16155194916790486,
+      "threshold_ms": 0.15157572236945888,
       "N_star_predicted": 18,
-      "N_star_predicted_on_grid": null,
-      "N_star_measured": null
+      "N_star_predicted_on_grid": 20,
+      "N_star_measured": 20
     },
     {
       "eps": 0.25,
-      "threshold_ms": 0.40387987291976213,
+      "threshold_ms": 0.37893930592364716,
       "N_star_predicted": 7,
-      "N_star_predicted_on_grid": 8,
-      "N_star_measured": 8
+      "N_star_predicted_on_grid": 10,
+      "N_star_measured": 10
     }
   ],
   "rows": [
     {
       "N": 1,
-      "handshake_rounds": 8,
-      "crypto_per_round_ms": 4.256705200532406,
-      "crypto_per_round_sd": 0.029894298667625316,
-      "hs_overhead_per_round_ms": 2.6396477769595252,
-      "hs_overhead_per_round_sd": 0.004511173936289608,
-      "hs_overhead_pct_of_floor": 163.39312466085292,
-      "model_overhead_per_round_ms": 2.8029340979022894
+      "handshake_rounds": 60,
+      "crypto_per_round_ms": 4.040972103054276,
+      "crypto_per_round_sd": 0.045929031366500964,
+      "hs_overhead_per_round_ms": 2.5634362738735246,
+      "hs_overhead_per_round_sd": 0.038850478604556975,
+      "hs_overhead_pct_of_floor": 169.1191856981731,
+      "model_overhead_per_round_ms": 2.638495930612302
     },
     {
       "N": 2,
+      "handshake_rounds": 30,
+      "crypto_per_round_ms": 2.887680643470907,
+      "crypto_per_round_sd": 0.024015682288178634,
+      "hs_overhead_per_round_ms": 1.3581758438765257,
+      "hs_overhead_per_round_sd": 0.012181263386698043,
+      "hs_overhead_pct_of_floor": 89.60378500232606,
+      "model_overhead_per_round_ms": 1.319247965306151
+    },
+    {
+      "N": 3,
+      "handshake_rounds": 20,
+      "crypto_per_round_ms": 2.4160373234189523,
+      "crypto_per_round_sd": 0.07278732033906929,
+      "hs_overhead_per_round_ms": 0.8921315912933903,
+      "hs_overhead_per_round_sd": 0.028915100082138573,
+      "hs_overhead_pct_of_floor": 58.857155839169316,
+      "model_overhead_per_round_ms": 0.879498643537434
+    },
+    {
+      "N": 5,
+      "handshake_rounds": 12,
+      "crypto_per_round_ms": 2.00115233465714,
+      "crypto_per_round_sd": 0.019611315422865497,
+      "hs_overhead_per_round_ms": 0.5289210177337635,
+      "hs_overhead_per_round_sd": 0.010497508807610002,
+      "hs_overhead_pct_of_floor": 34.89483734371015,
+      "model_overhead_per_round_ms": 0.5276991861224605
+    },
+    {
+      "N": 10,
+      "handshake_rounds": 6,
+      "crypto_per_round_ms": 1.8117840219443817,
+      "crypto_per_round_sd": 0.026590025509466226,
+      "hs_overhead_per_round_ms": 0.2702673586706853,
+      "hs_overhead_per_round_sd": 0.00823518580365767,
+      "hs_overhead_pct_of_floor": 17.830517608348984,
+      "model_overhead_per_round_ms": 0.26384959306123024
+    },
+    {
+      "N": 15,
       "handshake_rounds": 4,
-      "crypto_per_round_ms": 3.1165020627667563,
-      "crypto_per_round_sd": 0.08840649268977108,
-      "hs_overhead_per_round_ms": 1.490885173552725,
-      "hs_overhead_per_round_sd": 0.0718229014126462,
-      "hs_overhead_pct_of_floor": 92.28518635842715,
-      "model_overhead_per_round_ms": 1.4014670489511447
+      "crypto_per_round_ms": 1.7240022631206375,
+      "crypto_per_round_sd": 0.021265396296173123,
+      "hs_overhead_per_round_ms": 0.18130000797105433,
+      "hs_overhead_per_round_sd": 0.0049906003575048005,
+      "hs_overhead_pct_of_floor": 11.961018897811611,
+      "model_overhead_per_round_ms": 0.1758997287074868
     },
     {
-      "N": 4,
+      "N": 20,
+      "handshake_rounds": 3,
+      "crypto_per_round_ms": 1.641282460962684,
+      "crypto_per_round_sd": 0.032436725347976855,
+      "hs_overhead_per_round_ms": 0.13319817526892,
+      "hs_overhead_per_round_sd": 0.007278695194998933,
+      "hs_overhead_pct_of_floor": 8.787566583008298,
+      "model_overhead_per_round_ms": 0.13192479653061512
+    },
+    {
+      "N": 30,
       "handshake_rounds": 2,
-      "crypto_per_round_ms": 2.348767869989331,
-      "crypto_per_round_sd": 0.06150764545527634,
-      "hs_overhead_per_round_ms": 0.7217238526209624,
-      "hs_overhead_per_round_sd": 0.04112304846540365,
-      "hs_overhead_pct_of_floor": 44.67441317410893,
-      "model_overhead_per_round_ms": 0.7007335244755724
+      "crypto_per_round_ms": 1.613016166568995,
+      "crypto_per_round_sd": 0.03654099586749864,
+      "hs_overhead_per_round_ms": 0.09309870113313265,
+      "hs_overhead_per_round_sd": 0.004797685487715993,
+      "hs_overhead_pct_of_floor": 6.142058878413843,
+      "model_overhead_per_round_ms": 0.0879498643537434
     },
     {
-      "N": 8,
+      "N": 60,
       "handshake_rounds": 1,
-      "crypto_per_round_ms": 1.995604266994575,
-      "crypto_per_round_sd": 0.011011214025248938,
-      "hs_overhead_per_round_ms": 0.40324463043366243,
-      "hs_overhead_per_round_sd": 0.035819017810805744,
-      "hs_overhead_pct_of_floor": 24.960678748268183,
-      "model_overhead_per_round_ms": 0.3503667622377862
+      "crypto_per_round_ms": 1.5744283364619547,
+      "crypto_per_round_sd": 0.03822336201281138,
+      "hs_overhead_per_round_ms": 0.04801167058763433,
+      "hs_overhead_per_round_sd": 0.004616716204177135,
+      "hs_overhead_pct_of_floor": 3.167503993192794,
+      "model_overhead_per_round_ms": 0.0439749321768717
     }
   ],
-  "placeholder": true
+  "placeholder": false
 }

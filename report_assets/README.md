@@ -23,5 +23,5 @@ python scripts/make_report_assets.py --results results/quick   # placeholder bui
 | `build_issues.{md,tex}` | Issues hit during the build and their fixes |
 | `main.tex` / `main.pdf` | IEEEtran skeleton: headings only, all figures and tables placed |
 
-Assets built from `results/quick` are stamped `PLACEHOLDER` (a watermark on figures, a caption prefix on tables).
+Assets built from `results/quick` are marked as quick-profile placeholders (a watermark on figures, a caption prefix on tables).
 Figures are vector PDFs with embedded TrueType fonts, sized for a 3.5 in IEEE column. The diagrams span both columns (`figure*`).

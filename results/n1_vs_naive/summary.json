@@ -1,0 +1,38 @@
+{
+  "K": 5,
+  "rounds": 60,
+  "seeds": 5,
+  "order": "ABBA by seed",
+  "handshakes_identical": true,
+  "handshake_bytes_identical": true,
+  "crypto_ms": {
+    "amortized_mean": 256.84129779692444,
+    "amortized_sd": 23.03603251046659,
+    "naive_mean": 253.09510584920366,
+    "naive_sd": 21.872960495639624,
+    "paired_diff_mean": 3.7461919477208028,
+    "paired_diff_sd": 16.412158686715383,
+    "diff_pct": 1.4801518722186662,
+    "paired_t": 0.510398419352751
+  },
+  "handshake_ms": {
+    "amortized_mean": 162.84056368749862,
+    "amortized_sd": 15.073713472483943,
+    "naive_mean": 161.8094369536297,
+    "naive_sd": 13.868158847400634,
+    "paired_diff_mean": 1.031126733868939,
+    "paired_diff_sd": 10.551174659901479,
+    "diff_pct": 0.6372475878303887,
+    "paired_t": 0.21852253845353475
+  },
+  "symmetric_ms": {
+    "amortized_mean": 94.00073410942582,
+    "amortized_sd": 8.15480215577402,
+    "naive_mean": 91.28566889557396,
+    "naive_sd": 8.020182451232257,
+    "paired_diff_mean": 2.715065213851858,
+    "paired_diff_sd": 6.2357521423536015,
+    "diff_pct": 2.974251321921901,
+    "paired_t": 0.9735907141470048
+  }
+}

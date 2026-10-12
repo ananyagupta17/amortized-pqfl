@@ -1,0 +1,65 @@
+{
+  "args": {
+    "exp": "1,2,3,4",
+    "seeds": 5,
+    "scaling_seeds": 3,
+    "rounds": 20,
+    "samples_per_client": 2000,
+    "K": 5,
+    "N": 5,
+    "N_sweep": "1,2,3,5,10,15,20,30,60",
+    "sweep_rounds": 60,
+    "K_sweep": "3,5,10,20",
+    "quick": false,
+    "dry_run": false,
+    "force": false
+  },
+  "effective": {
+    "seeds": [
+      0,
+      1,
+      2,
+      3,
+      4
+    ],
+    "scaling_seeds": [
+      0,
+      1,
+      2
+    ],
+    "rounds": 20,
+    "sweep_rounds": 60,
+    "K": 5,
+    "N": 5,
+    "N_sweep": [
+      1,
+      2,
+      3,
+      5,
+      10,
+      15,
+      20,
+      30,
+      60
+    ],
+    "K_sweep": [
+      3,
+      5,
+      10,
+      20
+    ],
+    "samples_per_client": 2000,
+    "raw_dir": "results/raw"
+  },
+  "runs": 92,
+  "elapsed_s": 4172.5,
+  "python": "3.11.14",
+  "platform": "macOS-15.1-arm64-arm-64bit",
+  "machine": "arm64",
+  "cpu_count": 8,
+  "torch": "2.14.1",
+  "torch_threads": 4,
+  "liboqs": "0.16.0",
+  "liboqs_python": "0.16.0.1",
+  "timestamp": "2026-10-12 00:51:00"
+}

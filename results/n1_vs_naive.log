@@ -1,0 +1,16 @@
+liboqs-python faulthandler is disabled
+[ 1/10] amortized seed=0  crypto= 257.64 ms  handshake= 161.12  symmetric= 96.52
+[ 2/10] naive_pqc seed=0  crypto= 237.54 ms  handshake= 152.16  symmetric= 85.38
+[ 3/10] naive_pqc seed=1  crypto= 241.27 ms  handshake= 154.80  symmetric= 86.47
+[ 4/10] amortized seed=1  crypto= 233.25 ms  handshake= 147.87  symmetric= 85.38
+[ 5/10] amortized seed=2  crypto= 235.03 ms  handshake= 149.59  symmetric= 85.44
+[ 6/10] naive_pqc seed=2  crypto= 235.98 ms  handshake= 150.39  symmetric= 85.58
+[ 7/10] naive_pqc seed=3  crypto= 286.50 ms  handshake= 183.01  symmetric=103.49
+[ 8/10] amortized seed=3  crypto= 272.28 ms  handshake= 172.45  symmetric= 99.83
+[ 9/10] amortized seed=4  crypto= 286.01 ms  handshake= 183.18  symmetric=102.83
+[10/10] naive_pqc seed=4  crypto= 264.19 ms  handshake= 168.68  symmetric= 95.50
+crypto_ms     amortized  256.84 ± 23.04   naive  253.10 ± 21.87   diff  +3.75 ± 16.41 ms (+1.5%), paired t = +0.51
+handshake_ms  amortized  162.84 ± 15.07   naive  161.81 ± 13.87   diff  +1.03 ± 10.55 ms (+0.6%), paired t = +0.22
+symmetric_ms  amortized   94.00 ±  8.15   naive   91.29 ±  8.02   diff  +2.72 ±  6.24 ms (+3.0%), paired t = +0.97
+handshakes identical: True; handshake bytes identical: True
+EXIT=0

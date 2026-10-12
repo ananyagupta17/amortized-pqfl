@@ -7,3 +7,8 @@ results/*
 !results/.gitkeep
 report_assets/build/
 report_assets/**/*.log
+!results/raw/
+!results/tables/
+!results/n1_vs_naive/
+!results/full_run.log
+!results/n1_vs_naive.log
