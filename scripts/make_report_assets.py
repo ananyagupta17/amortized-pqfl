@@ -96,9 +96,18 @@ class Data:
             r = r[r["N"] == N]
         return list(r.sort_values("seed")["df"])
 
-    def main(self, mode: str, K: int | None = None) -> list[pd.DataFrame]:
-        """Experiment-1 configuration (or the K-sweep point) for a mode."""
-        return self.select(mode, K or self.eff["K"], 1 if mode == "naive_pqc" else self.eff["N"])
+    def main(self, mode: str, K: int | None = None, seeds=None) -> list[pd.DataFrame]:
+        """Experiment-1 configuration (or the K-sweep point) for a mode, optionally per seed set."""
+        r = self.runs[(self.runs["R"] == self.eff["rounds"]) & (self.runs["mode"] == mode)
+                      & (self.runs["K"] == (K or self.eff["K"]))
+                      & (self.runs["N"] == (1 if mode == "naive_pqc" else self.eff["N"]))]
+        if seeds is not None:
+            r = r[r["seed"].isin(seeds)]
+        return list(r.sort_values("seed")["df"])
+
+    @property
+    def scaling_seeds(self) -> list[int]:
+        return self.eff.get("scaling_seeds", self.eff["seeds"])
 
 
 def summarize(df: pd.DataFrame) -> dict:
@@ -361,7 +370,7 @@ def fig_scaling(d: Data) -> Path:
     Ks = d.eff["K_sweep"]
     fig, (a, b) = plt.subplots(2, 1, figsize=(COL_W, 3.1), sharex=True)
     for m in MODES:
-        st = [stats(d.main(m, K)) for K in Ks]
+        st = [stats(d.main(m, K, d.scaling_seeds)) for K in Ks]
         for ax, key in ((a, "crypto_ms"), (b, "per_client_round_ms")):
             ax.errorbar(Ks, [s[0][key] for s in st], yerr=[s[1][key] for s in st],
                         color=COLOR[m], marker=MARKER[m], linestyle=DASH[m], capsize=2,
@@ -371,7 +380,7 @@ def fig_scaling(d: Data) -> Path:
     for ax in (a, b):
         ax.set_ylim(bottom=0)
     b.xaxis.set_major_locator(FixedLocator(Ks))
-    b.set_xlabel(f"Number of clients $K$ ($N={d.eff['N']}$)")
+    b.set_xlabel(f"Number of clients $K$ ($N={d.eff['N']}$, {len(d.scaling_seeds)} seeds)")
     _legend_top(a)
     fig.align_ylabels()
     return _save(fig, d, "client_scaling")
@@ -524,7 +533,7 @@ def table_scaling(d: Data) -> Path:
     for K in d.eff["K_sweep"]:
         cells = [str(K)]
         for m in MODES:
-            mu, sd = stats(d.main(m, K))
+            mu, sd = stats(d.main(m, K, d.scaling_seeds))
             cells += [_pm(mu["crypto_ms"], sd["crypto_ms"]), _pm(mu["pct_round"], sd["pct_round"], "{:.3f}")]
         rows.append(" & ".join(cells))
     hdr = ("$K$ & " + " & ".join(f"\\multicolumn{{2}}{{c}}{{{LABEL[m]}}}" for m in MODES)
@@ -533,7 +542,7 @@ def table_scaling(d: Data) -> Path:
     return _write_table("client_scaling", d, _table(
         "table*", "Crypto cost versus number of clients $K$", "tab:scaling", "lrrrrrr", hdr, rows,
         f"$N={d.eff['N']}$ (Naive PQC: $N=1$), {d.eff['rounds']} rounds, "
-        f"{len(d.eff['seeds'])} seeds; times summed over all clients and the server."))
+        f"{len(d.scaling_seeds)} seeds; times summed over all clients and the server."))
 
 
 def table_accuracy(d: Data) -> Path:

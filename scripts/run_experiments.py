@@ -10,7 +10,8 @@ Experiments
   2. Re-key cadence sweep (amortized): N in {1, 2, 3, 5, 10, 15, 20, 30, 60} over R=60 rounds
      (longer than the other experiments so large N is not capped by R); N=1 is checked against a
      naive_pqc reference run at the same R.
-  3. Client scaling: K in {3, 5, 10, 20}, all modes.
+  3. Client scaling: K in {3, 5, 10, 20}, all modes, 3 seeds (--scaling-seeds; crypto timings vary
+     little across seeds, and K=20 dominates the runtime).
   4. Accuracy validation: final accuracy per mode and seed (from experiment 1's runs).
 
 Each distinct (mode, K, N, seed, rounds, samples) configuration runs once. Results are cached in
@@ -60,7 +61,8 @@ class Spec:
 
 
 def plan(exps: set[int], seeds: list[int], rounds: int, sweep_rounds: int, samples: int | None,
-         K_main: int, N_main: int, N_sweep: list[int], K_sweep: list[int]) -> dict[int, list[Spec]]:
+         K_main: int, N_main: int, N_sweep: list[int], K_sweep: list[int],
+         scaling_seeds: list[int] | None = None) -> dict[int, list[Spec]]:
     def spec(mode, K, N, seed, R=rounds):
         return Spec(mode, K, None if mode == "naive_pqc" else N, seed, R, samples)
 
@@ -72,7 +74,8 @@ def plan(exps: set[int], seeds: list[int], rounds: int, sweep_rounds: int, sampl
         out[2] = ([spec("amortized", K_main, n, s, sweep_rounds) for n in N_sweep for s in seeds]
                   + [spec("naive_pqc", K_main, None, s, sweep_rounds) for s in seeds])
     if 3 in exps:
-        out[3] = [spec(m, k, N_main, s) for k in K_sweep for m in MODES for s in seeds]
+        out[3] = [spec(m, k, N_main, s) for k in K_sweep for m in MODES
+                  for s in (scaling_seeds if scaling_seeds is not None else seeds)]
     return out
 
 
@@ -293,6 +296,8 @@ def main() -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--exp", default="1,2,3,4", help="comma-separated experiment numbers")
     p.add_argument("--seeds", type=int, default=5)
+    p.add_argument("--scaling-seeds", type=int, default=3,
+                   help="seeds for experiment 3 (client scaling) only")
     p.add_argument("--rounds", type=int, default=20)
     p.add_argument("--samples-per-client", type=int, default=2000,
                    help="training subset per client; 0 = full MNIST shard (much slower)")
@@ -310,19 +315,23 @@ def main() -> int:
 
     exps = {int(x) for x in args.exp.split(",")}
     seeds, rounds, N, sweep_rounds = list(range(args.seeds)), args.rounds, args.N, args.sweep_rounds
+    scaling_seeds = list(range(min(args.scaling_seeds, args.seeds)))
     N_sweep = [int(x) for x in args.N_sweep.split(",")]
     K_sweep = [int(x) for x in args.K_sweep.split(",")]
     samples = args.samples_per_client or None
     global RAW, TABLES
     if args.quick:
         seeds, rounds, N, samples, sweep_rounds = [0, 1], 4, 2, 300, 8
+        scaling_seeds = [0, 1]
         N_sweep, K_sweep = [1, 2, 4, 8], [3, 5]
         RAW, TABLES = RESULTS / "quick" / "raw", RESULTS / "quick" / "tables"
 
-    effective = {"seeds": seeds, "rounds": rounds, "sweep_rounds": sweep_rounds, "K": args.K,
+    effective = {"seeds": seeds, "scaling_seeds": scaling_seeds, "rounds": rounds,
+                 "sweep_rounds": sweep_rounds, "K": args.K,
                  "N": N, "N_sweep": N_sweep,
                  "K_sweep": K_sweep, "samples_per_client": samples, "raw_dir": str(RAW)}
-    by_exp = plan(exps, seeds, rounds, sweep_rounds, samples, args.K, N, N_sweep, K_sweep)
+    by_exp = plan(exps, seeds, rounds, sweep_rounds, samples, args.K, N, N_sweep, K_sweep,
+                  scaling_seeds)
     unique = list(dict.fromkeys(s for specs in by_exp.values() for s in specs))
     todo = [s for s in unique if args.force or not s.path.exists()]
     est = sum(estimate_seconds(s) for s in todo)
