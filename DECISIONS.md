@@ -190,3 +190,64 @@ accepting a message whose metadata is false would be a bug, so the check stays.
 
 An earlier version of the suite (58 tests, 3 configurations, before Decision 5) gave
 8 failures for M1 and 10 failures for M2.
+
+## Measurement finding: run-order drift, not a code difference, explains the amortized N=1 vs naive gap
+
+**Observation.** In the full experiment run (K=5, R=60, 5 seeds), amortized with N=1
+measured **242.46 ± 2.76 ms** of crypto time and naive_pqc measured **257.79 ± 3.83 ms**.
+The paired difference was −15.33 ± 4.81 ms (−5.9%, paired t = −7.1). Both
+configurations did exactly the same work: 300 handshakes each, and identical handshake
+and wire byte counts.
+
+**Code paths: no difference.** Every branch on the mode in `pqfl/` is one of these:
+- config validation, which runs once;
+- the suite choice, which is the PQC suite for both modes;
+- the mode label in the AAD, which is 9 bytes for both "amortized" and "naive_pqc".
+
+Per-round work is the same instruction for instruction.
+
+**Run order: the cause.**
+- The amortized N=1 runs executed at 21:37–21:49 and the naive_pqc runs at 23:50–00:02,
+  more than two hours later. The experiment runner had also been restarted in between.
+- The restart itself is not the cause. AES-GCM time per client-round averaged
+  300.6 µs before the restart and 298.3 µs after it.
+- The naive window was slow. The AES-GCM path, which is identical code in every mode,
+  averaged **311.5 µs** per client-round in that window, against
+  **299.1 ± 9.3 µs** over all other runs.
+- The amortized N=1 runs had landed in a fast window, at about 295 µs.
+- Training speed in the naive window was normal (218.4 vs 218.8 ± 4.9 µs per sample).
+  So this is drift in the timing of microsecond-scale operations, from background load,
+  scheduling and cache state, not CPU throttling.
+- Even the AES-GCM component alone differed by 5.1% between the two sets of runs.
+
+**Controlled rerun.** `scripts/check_n1_vs_naive.py` ran both configurations in one
+process, alternating ABBA across 5 seeds (K=5, R=60). Results are in
+`results/n1_vs_naive/`.
+
+| | amortized N=1 | naive_pqc | paired diff | t |
+|---|---|---|---|---|
+| crypto total (ms) | 256.84 ± 23.04 | 253.10 ± 21.87 | +3.75 ± 16.41 (+1.5%) | +0.51 |
+| handshake (ms) | 162.84 ± 15.07 | 161.81 ± 13.87 | +1.03 ± 10.55 (+0.6%) | +0.22 |
+| AES-GCM path (ms) | 94.00 ± 8.15 | 91.29 ± 8.02 | +2.72 ± 6.24 (+3.0%) | +0.97 |
+
+With order controlled, the gap vanishes and its sign flips: there is no significant
+difference. The rerun also shows how large the drift can be. The last four runs
+(seeds 3–4) were about 15–20% slower in **both** modes, including the AES-GCM path
+(about 85 ms to about 100 ms). Pairing adjacent runs is what removes this.
+
+**Consequences for reading the results.**
+- **Naive vs amortized and the cadence sweep are robust.** Their effects are 2× or more,
+  far above the drift. The h/N model matches the measured sweep at every N, and measured
+  N\*(ε) equals the predicted value, rounded up to the swept grid, for ε = 5, 10 and 25%.
+- **Small gaps between separately run configurations should not be interpreted.** Here
+  "small" means below about 5%. In the main comparison, the three modes ran within 15
+  minutes of each other (21:20–21:34), and the AES-GCM path differed by up to 2.7%
+  between them. The 1.9 ms (5%) total gap between classical and amortized therefore
+  includes about 0.8 ms of drift in that identical code path. The handshake component
+  (9.10 vs 10.25 ms, +13%) is a real difference.
+- **The cadence figure's naive_pqc reference line comes from the slow window.** It sits
+  about 6% above the amortized N=1 point for that reason. The interleaved rerun shows
+  that the two coincide.
+- **Methodology for future runs:** when two configurations are compared directly,
+  interleave them (ABBA by seed) instead of running all of one configuration and then
+  all of the other.
