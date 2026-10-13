@@ -1,0 +1,11 @@
+{
+  "o_bytes": 72.0,
+  "H_classical_bytes": 256.0,
+  "H_pqc_bytes": 8954.0,
+  "S_cnn_bytes": 861496.0,
+  "measured_pct": {
+    "classical": 0.014300704820451865,
+    "naive_pqc": 1.0477123515373257,
+    "amortized": 0.21622851411962446
+  }
+}

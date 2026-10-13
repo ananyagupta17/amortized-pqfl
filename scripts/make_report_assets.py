@@ -647,6 +647,171 @@ def table_tests(d: Data) -> tuple[Path, int, int]:
     return _write_table("tests", d, body, from_results=False), passed, total
 
 
+# --- Model-size bandwidth analysis ------------------------------------------------
+
+def bandwidth_constants(d: Data) -> dict:
+    """Per-client byte constants measured in the main-comparison runs.
+
+    o     = bytes added to every encrypted update beyond the serialized model update S
+            (96-bit nonce, GCM tag, message framing), from rounds without a handshake.
+    H_m   = bytes of one handshake per client (both messages incl. framing) for suite m,
+            = overhead in handshake rounds - o.
+    S_cnn = serialized size of our CNN update.
+    """
+    frames = {m: pd.concat(d.main(m)) for m in MODES}
+    o_vals, H = [], {}
+    for m, df in frames.items():
+        ov = df.bytes_wire_total - df.plaintext_bytes
+        hs = df.handshakes > 0
+        o_vals += list(ov[~hs])
+        H[m] = ov[hs]
+    o = float(np.mean(o_vals))
+    if np.ptp(o_vals) != 0:
+        sys.exit(f"per-update overhead is not constant across rounds: {sorted(set(o_vals))}")
+    H = {m: float(v.mean()) - o for m, v in H.items()}
+    if H["naive_pqc"] != H["amortized"]:
+        sys.exit("PQC handshake size differs between naive and amortized runs")
+    return {"o_bytes": o, "H_classical_bytes": H["classical"], "H_pqc_bytes": H["amortized"],
+            "S_cnn_bytes": float(frames["amortized"].plaintext_bytes.mean()),
+            "measured_pct": {m: float(100 * (df.bytes_wire_total - df.plaintext_bytes).sum()
+                                      / df.plaintext_bytes.sum()) for m, df in frames.items()}}
+
+
+def _bw_configs(d: Data, c: dict) -> list[tuple[str, str, float, int, str]]:
+    N = d.eff["N"]
+    return [  # (label, color key, H, N, linestyle)
+        (f"Classical, $N={N}$", "classical", c["H_classical_bytes"], N, DASH["classical"]),
+        ("Naive PQC ($N=1$)", "naive_pqc", c["H_pqc_bytes"], 1, DASH["naive_pqc"]),
+        (f"Amortized PQC, $N={N}$", "amortized", c["H_pqc_bytes"], N, DASH["amortized"]),
+        ("Amortized PQC, $N=20$", "amortized", c["H_pqc_bytes"], 20, (0, (1, 1.2))),
+    ]
+
+
+def overhead_pct(S, o: float, H: float, N: int):
+    """Per-round, per-client protocol overhead as % of the model update: 100 (o + H/N) / S."""
+    return 100 * (o + H / N) / np.asarray(S, dtype=float)
+
+
+BW_SIZES = [10 * 1024, 100 * 1024, 1024**2, 10 * 1024**2]  # bytes; plus our CNN
+
+
+def _size_label(b: float) -> str:
+    return f"{b / 1024**2:.0f} MB" if b >= 1024**2 else f"{b / 1024:.0f} KB"
+
+
+def fig_bandwidth(d: Data) -> Path:
+    c = bandwidth_constants(d)
+    S = np.geomspace(10 * 1024, 10 * 1024**2, 300)
+    fig, ax = plt.subplots(figsize=(COL_W, 2.3))
+    for label, ck, H, N, ls in _bw_configs(d, c):
+        ax.plot(S / 1024, overhead_pct(S, c["o_bytes"], H, N), color=COLOR[ck], linestyle=ls,
+                label=label)
+        ax.plot(c["S_cnn_bytes"] / 1024, overhead_pct(c["S_cnn_bytes"], c["o_bytes"], H, N),
+                marker=MARKER[ck], color=COLOR[ck], markeredgecolor="white", markeredgewidth=0.5,
+                linestyle="none")
+    ax.axvline(c["S_cnn_bytes"] / 1024, color=INK_2, linewidth=0.7, linestyle=":")
+    ax.annotate(f"our CNN\n({c['S_cnn_bytes'] / 1024:.0f} KB)", (c["S_cnn_bytes"] / 1024, 1e-3),
+                xytext=(3, 2), textcoords="offset points", fontsize=6.5, color=INK, va="bottom")
+    ax.set_xscale("log")
+    ax.set_yscale("log")
+    ax.set_xlim(10, 10 * 1024)
+    ax.set_ylim(1e-3, 200)
+    ax.xaxis.set_major_locator(FixedLocator([10, 100, 1024, 10 * 1024]))
+    ax.xaxis.set_minor_locator(NullLocator())
+    ax.set_xticklabels(["10 KB", "100 KB", "1 MB", "10 MB"])
+    ax.yaxis.set_major_locator(FixedLocator([1e-3, 1e-2, 1e-1, 1, 10, 100]))
+    ax.set_yticklabels(["0.001", "0.01", "0.1", "1", "10", "100"])
+    ax.set_xlabel("Serialized model update size $S$ (per client)")
+    ax.set_ylabel("Protocol overhead per round\n(% of update size)")
+    ax.legend(loc="lower left", bbox_to_anchor=(0, 1.02), ncol=2, fontsize=6.5, handlelength=2.2,
+              columnspacing=1.0, borderaxespad=0)
+    return _save(fig, d, "bandwidth_vs_model_size")
+
+
+def table_bandwidth(d: Data) -> Path:
+    c = bandwidth_constants(d)
+    (OUT / "tables" / "bandwidth_constants.json").write_text(json.dumps(c, indent=2))
+    cfgs = _bw_configs(d, c)
+    sizes = sorted(BW_SIZES + [c["S_cnn_bytes"]])
+    rows = []
+    for S in sizes:
+        ours = S == c["S_cnn_bytes"]
+        name = f"{_size_label(S)} (our CNN)" if ours else _size_label(S)
+        cells = [f"{overhead_pct(S, c['o_bytes'], H, N):.3g}" for _, _, H, N, _ in cfgs]
+        rows.append(" & ".join([f"\\textbf{{{name}}}" if ours else name] + cells))
+    hdr = "Update size $S$ & " + " & ".join(lbl for lbl, *_ in cfgs)
+    o, Hc, Hp = c["o_bytes"], c["H_classical_bytes"], c["H_pqc_bytes"]
+    note = (f"Overhead $= 100\\,(o + H/N)/S$\\,\\% per client per round, with measured "
+            f"$o={o:.0f}$\\,B per update (nonce, GCM tag, framing), $H={Hc:.0f}$\\,B per "
+            f"classical handshake and $H={Hp:,.0f}$\\,B per PQC handshake (KEM key and "
+            f"ciphertext, two signatures, framing). Steady state ($R$ a multiple of $N$).")
+    return _write_table("bandwidth", d, _table(
+        "table*", "Per-round protocol overhead (\\% of model update) versus update size",
+        "tab:bandwidth", "lrrrr", hdr.replace(",", "{,}"), rows, note.replace("8,954", "8{,}954")))
+
+
+# --- Qualitative security comparison ----------------------------------------------
+
+P, NP, B = "Protected", "Not protected", "Bounded by $N$"
+SECURITY_ROWS = [
+    # (threat, [(cell, [tests]) for classical, naive_pqc, amortized])
+    ("Harvest-now-decrypt-later",
+     [(NP + " (X25519 secrets recoverable by a future quantum adversary)", []),
+      (P + " (ML-KEM-768)", ["test_wire_sizes"]),
+      (P + " (ML-KEM-768)", ["test_wire_sizes"])]),
+    ("Active MITM on the handshake",
+     [(P + "$^{\\dagger}$ (Ed25519, both directions)", ["test_forged_server_response_rejected",
+                                                      "test_substituted_kem_key_rejected"]),
+      (P + " (ML-DSA-65, both directions)", ["test_forged_server_response_rejected",
+                                             "test_substituted_kem_key_rejected"]),
+      (P + " (ML-DSA-65, both directions)", ["test_forged_server_response_rejected",
+                                             "test_substituted_kem_key_rejected"])]),
+    ("Replayed update",
+     [(P, ["test_replayed_update_from_old_round_rejected"]),
+      (P, ["test_replayed_update_from_old_round_rejected"]),
+      (P, ["test_replayed_update_from_old_round_rejected"])]),
+    ("Reordered / duplicate update",
+     [(P, ["test_reordered_update_rejected", "test_rollback_to_earlier_round_rejected"]),
+      (P + " (future-round key does not exist yet)", ["test_replayed_update_from_old_round_rejected"]),
+      (P, ["test_reordered_update_rejected"])]),
+    ("Tampered ciphertext",
+     [(P, ["test_tampered_ciphertext_rejected"]),
+      (P, ["test_tampered_ciphertext_rejected"]),
+      (P, ["test_tampered_ciphertext_rejected"])]),
+    ("Session-key compromise exposure window",
+     [(B + " rounds (whole session if keyed once)", ["test_old_epoch_key_rejected_after_rekey"]),
+      (P + " beyond 1 round (fresh key every round)", ["test_roundtrip_and_rekey_schedule"]),
+      (B + " rounds", ["test_old_epoch_key_rejected_after_rekey"])]),
+]
+
+
+def table_security(d: Data) -> Path:
+    for _, cells in SECURITY_ROWS:
+        for _, tests in cells:
+            missing = [t for t in tests if t not in TEST_PURPOSE]
+            if missing:
+                sys.exit(f"security table cites tests not in the suite: {missing}")
+    rows = []
+    for threat, cells in SECURITY_ROWS:
+        out = [threat]
+        for text, tests in cells:
+            t = "".join(f"\\newline{{\\scriptsize\\texttt{{{_tex_escape(x.removeprefix('test_'))}}}}}"
+                        for x in tests) or "\\newline{\\scriptsize (no test: property of the primitive)}"
+            out.append(text + t)
+        rows.append(" & ".join(out))
+    note = ("Test names refer to \\texttt{tests/test\\_crypto.py} (prefix \\texttt{test\\_} omitted). "
+            "$^{\\dagger}$Against classical adversaries; a quantum-capable active attacker could "
+            "forge Ed25519 in real time. Exposure window: updates readable after compromise of one "
+            "session key $K_e$; long-term identity-key compromise exposes no past updates in any "
+            "mode (fresh KEM keys per epoch) but allows impersonation in later handshakes.")
+    colspec = (">{\\raggedright\\arraybackslash}p{0.17\\linewidth}"
+               + ">{\\raggedright\\arraybackslash}p{0.255\\linewidth}" * 3)
+    return _write_table("security", d, _table(
+        "table*", "Qualitative security comparison", "tab:security", colspec,
+        f"Threat & Classical ($N={d.eff['N']}$) & Naive PQC & Amortized PQC ($N={d.eff['N']}$)",
+        rows, note), from_results=False)
+
+
 # --- Diagrams & skeleton ---------------------------------------------------------
 
 def tectonic(tex: Path) -> bool:
@@ -674,7 +839,8 @@ def main() -> int:
     print(f"Loaded {len(d.runs)} runs from {d.eff['raw_dir']}"
           + ("  [QUICK PROFILE: assets are placeholders]" if d.quick else ""))
 
-    for f in (fig_per_round, fig_cumulative, fig_bytes, fig_rekey, fig_scaling, fig_accuracy):
+    for f in (fig_per_round, fig_cumulative, fig_bytes, fig_rekey, fig_scaling, fig_accuracy,
+              fig_bandwidth):
         print(f"  figure  {f(d).relative_to(ROOT)}")
     for t in (table_main, table_overhead, table_primitives, table_rekey, table_scaling,
               table_accuracy):
@@ -693,6 +859,17 @@ def main() -> int:
     print()
     path, passed, total = table_tests(d)
     print(f"  table   {path.relative_to(ROOT)}  ({passed}/{total} test cases passed)")
+    for t in (table_bandwidth, table_security):
+        print(f"  table   {t(d).relative_to(ROOT)}")
+    c = bandwidth_constants(d)
+    print(f"\n  Bandwidth model: o = {c['o_bytes']:.0f} B/update, H = {c['H_classical_bytes']:.0f} B "
+          f"(classical) / {c['H_pqc_bytes']:.0f} B (PQC) per handshake, S_cnn = {c['S_cnn_bytes']:.0f} B")
+    for label, _, H, N, _ in _bw_configs(d, c):
+        print(f"    {label:<24}" + "  ".join(
+            f"{_size_label(S):>6}: {overhead_pct(S, c['o_bytes'], H, N):8.4f}%"
+            for S in sorted(BW_SIZES + [c['S_cnn_bytes']])))
+    print("    check vs measured at S_cnn: " + ", ".join(
+        f"{m} {v:.4f}%" for m, v in c["measured_pct"].items()))
 
     if not args.skip_latex:
         for tex in sorted((OUT / "diagrams").glob("*.tex")) + [OUT / "main.tex"]:

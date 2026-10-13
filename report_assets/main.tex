@@ -92,6 +92,17 @@ post-quantum cryptography, federated learning, ML-KEM, ML-DSA, secure aggregatio
   \label{fig:bytes}
 \end{figure}
 
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\columnwidth]{bandwidth_vs_model_size.pdf}
+  \caption{Per-round protocol overhead versus model update size $S$, computed as
+  $100\,(o + H/N)/S$\,\% from measured byte counts: $o$ bytes per update (nonce, GCM tag,
+  framing) and $H$ bytes per handshake per client. Markers: our CNN.}
+  \label{fig:bandwidth}
+\end{figure}
+
+\input{tables/bandwidth}
+
 \subsection{Effect of Re-Key Interval}
 
 \begin{figure}[t]
@@ -128,6 +139,8 @@ post-quantum cryptography, federated learning, ML-KEM, ML-DSA, secure aggregatio
 \input{tables/accuracy}
 
 \section{Security Evaluation}
+
+\input{tables/security}
 
 \input{tables/tests}
 

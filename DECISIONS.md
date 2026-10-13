@@ -251,3 +251,70 @@ difference. The rerun also shows how large the drift can be. The last four runs
 - **Methodology for future runs:** when two configurations are compared directly,
   interleave them (ABBA by seed) instead of running all of one configuration and then
   all of the other.
+
+## Measurement finding: the interleaved main comparison
+
+`scripts/check_main_interleaved.py` reruns the main comparison (K=5, R=20, N=5, 5 seeds)
+with the three modes run back to back for each seed. The mode that runs first rotates
+from seed to seed. Everything runs in one process on AC power. Results are in
+`results/main_interleaved/`.
+
+| per mode (mean ± sd) | crypto total (ms) | handshake (ms) | AES-GCM path (ms) | AES-GCM µs / client-round |
+|---|---|---|---|---|
+| classical | 40.42 ± 2.23 | 9.54 ± 0.36 | 30.88 ± 1.93 | 308.8 |
+| naive_pqc | 89.34 ± 7.98 | 54.97 ± 3.51 | 34.37 ± 4.91 | 343.7 |
+| amortized | 41.01 ± 2.00 | 10.57 ± 0.63 | 30.44 ± 1.41 | 304.4 |
+
+**Amortized vs classical (paired):**
+- **Crypto total:** +0.59 ± 0.97 ms (+1.5%, t = +1.36), not significant.
+- **Handshake:** +1.03 ± 0.41 ms (+10.8%, t = +5.60), a real difference. It comes from
+  the four PQC handshake rounds per session in place of the classical ones.
+- **AES-GCM path:** −0.44 ± 1.11 ms (−1.4%, t = −0.88), no difference. This is the
+  drift control, and it confirms that interleaving removed the drift. The 1.9 ms (5%)
+  classical-vs-amortized gap in the original sequential run is therefore mostly drift.
+  With amortization at N=5, PQC costs about 1 ms more than classical over 20 rounds for
+  5 clients.
+
+**Naive PQC vs amortized:** +48.32 ± 6.07 ms (+117.8%, t = +17.8). This 2× cost is robust.
+
+**One open observation.** The naive mode's AES-GCM path is 12.9% slower than
+amortized's (t = +2.40), even with interleaving. The code is identical, so the likely
+cause is interference: in naive mode, ML-KEM and ML-DSA run immediately before every
+AES-GCM call, which plausibly evicts caches and churns the allocator. This was not
+verified further. Its effect on conclusions is small: it adds about 4 ms to a 48 ms gap.
+
+## Bandwidth versus model size
+
+Byte counts per client are exact and identical across seeds, so overhead can be computed
+for other model sizes without training anything. From the main-comparison runs
+(`tables/bandwidth_constants.json`):
+
+- **o = 72 B per encrypted update:** a 12-byte nonce, a 16-byte GCM tag and 44 bytes of
+  framing.
+- **H = 256 B per classical handshake per client.** H = 8,954 B per PQC handshake: the
+  1,184-byte KEM key, the 1,088-byte KEM ciphertext, 6,618 bytes for the two ML-DSA-65
+  signatures, and framing.
+- **Overhead per round = 100 (o + H/N) / S percent,** where S is the serialized update
+  size. This assumes steady state (R a multiple of N).
+
+At our CNN's update size (S = 861,496 B, 841 KB), the model reproduces the measured
+overhead exactly: 0.0143% classical, 1.0477% naive, 0.2162% amortized (N=5). For a
+10 KB model, naive PQC adds 88% per round and amortized adds 18% (N=5) or 5.1% (N=20).
+For models of 1 MB and above, every mode stays below 1%. Amortization matters for
+bandwidth mainly when models are small.
+
+## Qualitative security table
+
+`tables/security.tex` compares the three modes against six threats and cites a test for
+each cell where one exists. The build stops if a cited test is missing from the suite.
+Two cells are deliberately qualified:
+
+- **Harvest-now-decrypt-later, classical:** "not protected", backed by no test. It is a
+  property of X25519 against a future quantum adversary.
+- **Active MITM, classical:** "protected" against classical attackers only, marked with
+  a dagger. A quantum-capable attacker active in real time could forge Ed25519.
+
+The session-key exposure window is N rounds for classical and amortized (the whole
+session if classical is keyed once) and 1 round for naive. Compromising a long-term
+identity key exposes no past updates in any mode, because KEM keys are fresh every epoch.
+It does allow impersonation in later handshakes.

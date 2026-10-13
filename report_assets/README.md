@@ -17,9 +17,11 @@ python scripts/make_report_assets.py --results results/quick   # placeholder bui
 | `tables/nstar.json` | The N\* analysis: f (symmetric-only floor), h (extra cost of a handshake round), per-N overhead, and predicted vs measured N\*(ε) |
 | `figures/client_scaling.pdf` | Crypto time versus K (total, and per client per round) |
 | `figures/accuracy.pdf` | Final accuracy per mode with error bars and per-seed points |
+| `figures/bandwidth_vs_model_size.pdf` | Per-round protocol overhead (% of update) versus model update size, 10 KB–10 MB, from measured byte constants; our CNN marked |
 | `diagrams/architecture.{tex,pdf}` | System architecture (TikZ) |
 | `diagrams/sequence.{tex,pdf}` | Re-key round followed by a symmetric-only round (TikZ) |
-| `tables/*.tex` | booktabs tables: main comparison, compute vs bandwidth overhead, primitives, re-key sweep with N\*(ε), client scaling, accuracy, tests |
+| `tables/*.tex` | booktabs tables: main comparison, compute vs bandwidth overhead, primitives, re-key sweep with N\*(ε), client scaling, accuracy, bandwidth vs model size, qualitative security comparison, tests |
+| `tables/bandwidth_constants.json` | Measured per-update (o) and per-handshake (H) byte constants used by the bandwidth model |
 | `build_issues.{md,tex}` | Issues hit during the build and their fixes |
 | `main.tex` / `main.pdf` | IEEEtran skeleton: headings only, all figures and tables placed |
 
