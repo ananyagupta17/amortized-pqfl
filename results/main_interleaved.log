@@ -1,0 +1,26 @@
+liboqs-python faulthandler is disabled
+[ 1/15] classical seed=0  crypto= 39.16 ms  handshake=  9.26  AES-GCM= 29.89
+[ 2/15] naive_pqc seed=0  crypto= 79.87 ms  handshake= 50.75  AES-GCM= 29.12
+[ 3/15] amortized seed=0  crypto= 38.81 ms  handshake=  9.83  AES-GCM= 28.98
+[ 4/15] naive_pqc seed=1  crypto= 88.85 ms  handshake= 52.83  AES-GCM= 36.02
+[ 5/15] amortized seed=1  crypto= 40.86 ms  handshake= 10.85  AES-GCM= 30.01
+[ 6/15] classical seed=1  crypto= 40.68 ms  handshake=  9.29  AES-GCM= 31.39
+[ 7/15] amortized seed=2  crypto= 40.07 ms  handshake= 10.26  AES-GCM= 29.81
+[ 8/15] classical seed=2  crypto= 39.01 ms  handshake=  9.51  AES-GCM= 29.50
+[ 9/15] naive_pqc seed=2  crypto= 84.25 ms  handshake= 54.25  AES-GCM= 29.99
+[10/15] classical seed=3  crypto= 44.20 ms  handshake= 10.17  AES-GCM= 34.04
+[11/15] naive_pqc seed=3  crypto=100.45 ms  handshake= 59.33  AES-GCM= 41.12
+[12/15] amortized seed=3  crypto= 44.21 ms  handshake= 11.50  AES-GCM= 32.71
+[13/15] naive_pqc seed=4  crypto= 93.26 ms  handshake= 57.69  AES-GCM= 35.57
+[14/15] amortized seed=4  crypto= 41.10 ms  handshake= 10.42  AES-GCM= 30.68
+[15/15] classical seed=4  crypto= 39.04 ms  handshake=  9.49  AES-GCM= 29.55
+
+per mode (mean ± sd over seeds):
+  classical crypto  40.42 ± 2.23  handshake   9.54 ± 0.36  AES-GCM  30.88 ± 1.93 ms (308.8 us/client-round)  acc 98.21
+  naive_pqc crypto  89.34 ± 7.98  handshake  54.97 ± 3.51  AES-GCM  34.37 ± 4.91 ms (343.7 us/client-round)  acc 98.21
+  amortized crypto  41.01 ± 2.00  handshake  10.57 ± 0.63  AES-GCM  30.44 ± 1.41 ms (304.4 us/client-round)  acc 98.21
+paired gaps:
+  amortized-classical: crypto_ms +0.59 ± 0.97 ms (+1.5%, t=+1.36); handshake_ms +1.03 ± 0.41 ms (+10.8%, t=+5.60); symmetric_ms -0.44 ± 1.11 ms (-1.4%, t=-0.88)
+  naive_pqc-amortized: crypto_ms +48.32 ± 6.07 ms (+117.8%, t=+17.80); handshake_ms +44.40 ± 3.09 ms (+420.0%, t=+32.14); symmetric_ms +3.93 ± 3.66 ms (+12.9%, t=+2.40)
+  naive_pqc-classical: crypto_ms +48.92 ± 6.39 ms (+121.0%, t=+17.11); handshake_ms +45.43 ± 3.21 ms (+476.0%, t=+31.63); symmetric_ms +3.49 ± 3.46 ms (+11.3%, t=+2.26)
+EXIT=0

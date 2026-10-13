@@ -12,3 +12,5 @@ report_assets/**/*.log
 !results/n1_vs_naive/
 !results/full_run.log
 !results/n1_vs_naive.log
+!results/main_interleaved/
+!results/main_interleaved.log
